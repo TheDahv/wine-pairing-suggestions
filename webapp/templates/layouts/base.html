@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <style>
+        @import "https://cdn.jsdelivr.net/npm/bulma@1.0.4/css/bulma.min.css";
+    </style>
+    <title>Wine and Food Pairings</title>
+</head>
+
+<body>
+    <header class="navbar">
+        <h1>Header</h1>
+    </header>
+    <main class="section">
+        <div class="container">
+            {{block "main" .}}{{end}}
+        </div>
+    </main>
+
+    <script src="https://cdn.jsdelivr.net/npm/htmx.org@2.0.6/dist/htmx.min.js"></script>
+</body>
+
+</html>

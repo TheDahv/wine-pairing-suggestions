@@ -1,0 +1,22 @@
+{{template "layouts/base.html" .}}
+
+{{define "main"}}
+<h1 class="title">Wine and Food Pairing Suggestions</h1>
+
+<form hx-post="/recipes/summary/" hx-target="#summary">
+    <p>
+        <label for="url">
+            Let's add the URL for a recipe you want to pair.
+            <input name="url" type="url">
+        </label>
+    </p>
+    <p><input type="submit" class="button is-primary" value="Scan"></p>
+    <p class="htmx-indicator"><progress class="progress is-small is-primary" max="100">Loading...</progress></p>
+</form>
+
+<div id="summary">
+</div>
+
+<div id="suggestions">
+</div>
+{{end}}
