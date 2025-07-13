@@ -2,6 +2,7 @@ package webapp
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"html/template"
 	"io"
@@ -207,19 +208,20 @@ func (wa *Webapp) PostCreateRecipe(w http.ResponseWriter, r *http.Request) {
 	}
 
 	tmp := struct {
-		RecipeURL string
-		Summary   string
+		RecipeURL string `json:"url"`
+		Summary   string `json:"summary"`
 	}{
 		RecipeURL: recipeUrl,
 		Summary:   summary,
 	}
 
-	w.Header().Add("HX-Trigger", "newRecipeSummary")
-
-	if err := wa.tmpl.Lookup("partials/_recipesummary.html").Execute(w, tmp); err != nil {
+	w.Header().Add("Content-Type", "application/json")
+	out, err := json.Marshal(tmp)
+	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
-		fmt.Fprintf(w, "unable to render summary: %v", err)
+		fmt.Fprintf(w, "{ \"error\": \"unable to render summary JSON: %v\"", err)
 	}
+	fmt.Fprint(w, string(out))
 }
 
 // GetRecipeWineSuggestions implements the route at
@@ -273,16 +275,8 @@ func (wa *Webapp) GetRecipeWineSuggestions(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	parsed, err := models.ParseSuggestions(suggestions)
-	if err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		fmt.Fprintf(w, "unable to parse wine suggestions: %v", err)
-	}
-
-	if err := wa.tmpl.Lookup("partials/_suggestions.html").Execute(w, parsed); err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		fmt.Fprintf(w, "unable to render wine suggestions: %v", err)
-	}
+	w.Header().Add("Content-Type", "application/json")
+	fmt.Fprint(w, suggestions)
 }
 
 // GetRecentSuggestions implements the route at
@@ -308,8 +302,13 @@ func (wa *Webapp) GetRecentSuggestions(w http.ResponseWriter, r *http.Request) {
 		urls[i], urls[j] = urls[j], urls[i]
 	})
 
-	if err := wa.tmpl.Lookup("partials/_recentsuggestions.html").Execute(w, urls[0:3]); err != nil {
+	out, err := json.Marshal(urls[0:3])
+	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
-		fmt.Fprintf(w, "unable to render recent recipes: %v", err)
+		fmt.Fprintf(w, "unable to encode URL suggestions: %v", err)
+		return
 	}
+	w.Header().Add("Content-Type", "application/json")
+	fmt.Fprint(w, string(out))
+	return
 }

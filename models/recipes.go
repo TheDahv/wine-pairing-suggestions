@@ -93,7 +93,6 @@ func GeneratePairingSuggestions(ctx context.Context, model llms.Model, summary s
 		return "", fmt.Errorf("failed to generate wine suggestions: %v", err)
 	}
 
-	fmt.Println(answer)
 	return answer, nil
 }
 

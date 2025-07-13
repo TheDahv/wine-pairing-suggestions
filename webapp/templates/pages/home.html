@@ -3,45 +3,139 @@
 {{define "main"}}
 
 <script>
-    document.body.addEventListener('htmx:configRequest', function (evt) {
-        switch (evt.detail.target.id) {
-            case 'summary': {
-                const url = evt.target.querySelector('input[type="url"]').value;
-                evt.detail.path = `/recipes/summary/${encodeURIComponent(url)}`
-                break;
+    document.addEventListener('alpine:init', () => {
+        Alpine.store('recipe', {
+            summaryState: 'NOT_STARTED',
+            suggestionsState: 'NOT_STARTED',
+            url: '',
+            summary: '',
+            suggestions: [],
+            reset() {
+                this.summaryState = 'NOT_STARTED';
+                this.suggestionsState = 'NOT_STARTED';
+                summary: '';
+                suggestions: [];
+            },
+            async fetch() {
+                const url = this.url;
+                if (!url) {
+                    return;
+                }
+
+                this.reset();
+                try {
+                    this.summaryState = 'FETCHING';
+                    const result = await fetch(`/recipes/summary/${encodeURIComponent(url)}`, {
+                        method: 'POST',
+                        headers: {
+                            'Accept': 'application/json'
+                        }
+                    });
+                    const parsed = await result.json();
+                    this.summary = parsed.summary;
+                    this.summaryState = 'SUCCESS';
+                } catch (error) {
+                    this.summaryState = 'ERROR';
+                    console.error({ log: 'failed to fetch', error });
+
+                    // Stop processing here.
+                    return;
+                }
+
+                try {
+                    this.suggestionsState = 'FETCHING';
+                    const result = await fetch(`/recipes/suggestions/${encodeURIComponent(url)}`, {
+                        method: 'GET',
+                        headers: {
+                            'Accept': 'application/json'
+                        }
+                    });
+                    const parsed = await result.json();
+                    this.suggestions = parsed;
+                    this.suggestionsState = 'SUCCESS';
+                } catch (error) {
+                    this.suggestionsState = 'ERROR';
+                    console.error({ log: 'failed to fetch', error });
+                }
             }
-            case 'suggestions': {
-                const url = document.querySelector('input[type="url"]').value;
-                evt.detail.path = `/recipes/suggestions/${encodeURIComponent(url)}`;
-                break;
+        });
+        Alpine.store('previousrecipes', {
+            urls: [],
+            state: 'NOT_STARTED',
+            async fetch() {
+                try {
+                    this.state = 'FETCHING';
+                    const result = await fetch(`/recipes/suggestions/recent`, {
+                        headers: {
+                            'Accept': 'application/json'
+                        }
+                    });
+                    this.urls = await result.json();
+                    this.state = 'SUCCESS';
+                } catch (error) {
+                    this.state = 'ERROR';
+                    console.error({ log: 'failed to fetch suggestions', error })
+                }
             }
-        }
+        });
+
     });
 </script>
 
-<h1 class="title">Wine and Food Pairing Suggestions</h1>
+<h1 class="title is-1">Wine and Food Pairing Suggestions</h1>
 
-<form hx-post="/recipes/summary/:url" hx-target="#summary" hx-swap="innerHtml">
-    <p>
+<form class="box" x-data @submit.prevent="$store.recipe.fetch()">
+    <p class="block">
         <label for="url">
             Let's add the URL for a recipe you want to pair.
-            <input name="url" type="url">
+            <input name="url" type="text" x-model="$store.recipe.url">
         </label>
     </p>
-    <p><input type="submit" class="button is-primary" value="Scan"></p>
-
-
-    <p class="htmx-indicator"><progress class="progress is-small is-primary" max="100">Loading...</progress></p>
+    <p class="block"><input type="submit" class="button is-primary" value="Scan" x-bind:disabled="!$store.recipe.url">
+    </p>
+    <div class="block" x-init="$store.previousrecipes.fetch()" x-data>
+        <div x-show="$store.previousrecipes.state == 'SUCCESS'">
+            <strong>Try it out with a recently analyzed recipe:</strong>
+            <ul>
+                <template x-for="url in $store.previousrecipes.urls">
+                    <li>
+                        <a x-text="url" @click.prevent="$store.recipe.url = url">
+                    </li>
+                </template>
+            </ul>
+        </div>
+        <div x-show="$store.previousrecipes.state == 'FETCHING'">
+            <p><em>Loading websites with recent suggestions.</em></p>
+        </div>
+    </div>
 </form>
 
-<div hx-trigger="load once from:body" hx-get="/recipes/suggestions/recent">
-    <p class="htmx-indicator"><em>Loading websites with recent suggestions.</em></p>
-</div>
 
-<div id="summary">
-</div>
+<section class="section" id="summary" x-data x-show="$store.recipe.summaryState != 'NOT_STARTED'">
+    <h2 class="title is-2">Summary</h2>
+    <p x-show="$store.recipe.summaryState == 'FETCHING'">
+        <progress class="progress is-small is-primary" max="100">Loading...</progress>
+    </p>
+    <div class="box" x-show="$store.recipe.summaryState == 'SUCCESS'">
+        <p class="content" x-text="$store.recipe.summary"></p>
+    </div>
+</section>
 
-<div id="suggestions" hx-trigger="newRecipeSummary from:body" hx-get="/recipes/suggestions/$recipeURL">
-    <p class="htmx-indicator"><progress class="progress is-small is-primary" max="100">Loading...</progress></p>
-</div>
+<section class="section" id="suggestions" x-data x-show="$store.recipe.suggestionsState != 'NOT_STARTED'">
+    <h2 class="title is-2">Pairing Suggestions</h2>
+    <p x-show="$store.recipe.suggestionsState == 'FETCHING'">
+        <progress class=" progress is-small is-primary" max="100">Loading...</progress>
+    </p>
+    <div x-show="$store.recipe.suggestionsState == 'SUCCESS'">
+        <template x-for="suggestion in $store.recipe.suggestions">
+            <div class="box">
+                <p>
+                    <strong x-text="`${suggestion.vintageRange} ${suggestion.style} - ${suggestion.region}`"></strong>
+                </p>
+                <p x-text="suggestion.description"></p>
+                <p x-text="suggestion.pairingNote"></p>
+            </div>
+        </template>
+    </div>
+</section>
 {{end}}
