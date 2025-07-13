@@ -6,6 +6,7 @@ import (
 	"html/template"
 	"io"
 	"io/fs"
+	"math/rand/v2"
 	"net/http"
 	"net/url"
 	"os"
@@ -82,6 +83,7 @@ func NewWebapp(port int, options ...Option) (*Webapp, error) {
 func (wa *Webapp) Start(port int) error {
 	mux := http.NewServeMux()
 	mux.HandleFunc("POST /recipes/summary/{url}", wa.PostCreateRecipe)
+	mux.HandleFunc("GET /recipes/suggestions/recent", wa.GetRecentSuggestions)
 	mux.HandleFunc("GET /recipes/suggestions/{url}", wa.GetRecipeWineSuggestions)
 	mux.HandleFunc("GET /", wa.GetHome)
 
@@ -280,5 +282,34 @@ func (wa *Webapp) GetRecipeWineSuggestions(w http.ResponseWriter, r *http.Reques
 	if err := wa.tmpl.Lookup("partials/_suggestions.html").Execute(w, parsed); err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		fmt.Fprintf(w, "unable to render wine suggestions: %v", err)
+	}
+}
+
+// GetRecentSuggestions implements the route at
+// "GET /recipes/suggestions/recent" and loads a sample of previously-cached recipe
+// analyses to give the user a quick way to explore the app.
+func (wa *Webapp) GetRecentSuggestions(w http.ResponseWriter, r *http.Request) {
+	keys, err := wa.cache.GetKeys("recipes:suggestions-json:*")
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		fmt.Fprintf(w, "unable to scan keys: %v", err)
+		return
+	}
+
+	var urls []string
+	for _, k := range keys {
+		u := k[strings.Index(k, ":")+1:]
+		u = u[strings.Index(u, ":")+1:]
+		urls = append(urls, u)
+	}
+
+	// TODO push sort and limit options into data layer
+	rand.Shuffle(len(urls), func(i, j int) {
+		urls[i], urls[j] = urls[j], urls[i]
+	})
+
+	if err := wa.tmpl.Lookup("partials/_recentsuggestions.html").Execute(w, urls[0:3]); err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		fmt.Fprintf(w, "unable to render recent recipes: %v", err)
 	}
 }

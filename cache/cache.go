@@ -3,14 +3,18 @@ package cache
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	rdb "github.com/redis/go-redis/v9"
 )
 
+// Resolver is a function that returns a cacheable resource on a cache miss.
 type Resolver func() (string, error)
 
+// Cacher describes the functionality of a cache provider.
 type Cacher interface {
 	Get(string, Resolver) (string, error)
+	GetKeys(string) ([]string, error)
 }
 
 type memory struct {
@@ -34,6 +38,17 @@ func (m *memory) Get(key string, onMiss Resolver) (string, error) {
 
 	m.cache[key] = val
 	return m.cache[key], nil
+}
+
+func (m *memory) GetKeys(pattern string) ([]string, error) {
+	var keys []string
+	search := strings.Replace(pattern, "*", "", 1)
+	for k := range m.cache {
+		if strings.HasPrefix(k, search) {
+			keys = append(keys, k)
+		}
+	}
+	return keys, nil
 }
 
 type redis struct {
@@ -73,4 +88,14 @@ func (r *redis) Get(key string, onMiss Resolver) (string, error) {
 	}
 
 	return hit, nil
+}
+
+func (r *redis) GetKeys(pattern string) ([]string, error) {
+	ctx := context.TODO()
+	keys, err := r.conn.Keys(ctx, pattern).Result()
+	if err != nil {
+		return keys, fmt.Errorf("unable to fetch keys from redis: %v", err)
+	}
+
+	return keys, err
 }
