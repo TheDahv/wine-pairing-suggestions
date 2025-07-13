@@ -33,10 +33,11 @@ func SummarizeRecipe(ctx context.Context, model llms.Model, markdown string) (st
 	%s
 	</RECIPE>
 	
-	Task: Generate a one-paragraph summary of the meal that the recipe describes,
-	highlighting the most important tasting notes and flavors that would guide
-	a wine pairing. Include a list of the key ingredients, ordered by their importance
-	and influence on the overall flavor profile of the dish.
+	Task: Generate a one-paragraph summary of the meal that the recipe
+	describes, highlighting the most important tasting notes and flavors that
+	would guide a wine pairing. Include a list of the key ingredients, ordered
+	by their importance and influence on the overall flavor profile of the dish.
+	Output the response directly without introducing it.
 	`, markdown)
 
 	summary, err := llms.GenerateFromSinglePrompt(
