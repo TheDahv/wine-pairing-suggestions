@@ -13,6 +13,7 @@ import (
 	"runtime"
 	"strings"
 
+	"github.com/thedahv/wine-pairing-suggestions/cache"
 	"github.com/thedahv/wine-pairing-suggestions/helpers"
 	"github.com/thedahv/wine-pairing-suggestions/models"
 )
@@ -22,16 +23,36 @@ import (
 type Webapp struct {
 	port  int
 	tmpl  *template.Template
-	cache map[string]string
+	cache cache.Cacher
+}
+
+// Option configures the Webapp with various options
+type Option func(*Webapp) error
+
+// WithMemoryCache configures the Webapp to use an in-memory cache. It does not
+// persist between restarts.
+func WithMemoryCache() Option {
+	return func(wa *Webapp) error {
+		wa.cache = cache.NewMemory()
+		return nil
+	}
+}
+
+// WithRedisCache configures the Webapp to connect to a Redis server at the
+// given host and port.
+func WithRedisCache(host string, port int) Option {
+	return func(wa *Webapp) error {
+		wa.cache = cache.NewRedis(host, port)
+		return nil
+	}
 }
 
 // NewWebapp builds a new Webapp configured and ready to listen to traffic on
 // the given port. Call Start on a new webapp to begin receiving traffic.
-func NewWebapp(port int) (*Webapp, error) {
+func NewWebapp(port int, options ...Option) (*Webapp, error) {
 	wa := &Webapp{
-		port:  port,
-		tmpl:  template.New(""),
-		cache: make(map[string]string),
+		port: port,
+		tmpl: template.New(""),
 	}
 
 	_, thispath, _, ok := runtime.Caller(0)
@@ -42,6 +63,16 @@ func NewWebapp(port int) (*Webapp, error) {
 
 	if err := wa.buildTemplates(filepath.Join(thisdir, "templates")); err != nil {
 		return nil, fmt.Errorf("unable to build templates: %v", err)
+	}
+
+	for _, option := range options {
+		if err := option(wa); err != nil {
+			return wa, fmt.Errorf("unable to apply option: %v", err)
+		}
+	}
+
+	if wa.cache == nil {
+		return wa, fmt.Errorf("no cache configured in options")
 	}
 
 	return wa, nil
@@ -56,24 +87,6 @@ func (wa *Webapp) Start(port int) error {
 
 	fmt.Printf("listening on :%d\n", port)
 	return http.ListenAndServe(fmt.Sprintf(":%d", wa.port), mux)
-}
-
-// cacheGet allows the web app to retrieve items from its cache. Given a cache
-// miss, it will call onMiss to create the resource and cache it under the given
-// key before returning to the caller. It will pass any errors that onMiss returns
-// through to the caller.
-func (wa *Webapp) cacheGet(key string, onMiss func() (string, error)) (string, error) {
-	if hit, ok := wa.cache[key]; ok {
-		return hit, nil
-	}
-
-	val, err := onMiss()
-	if err != nil {
-		return "", fmt.Errorf("unable to resolve cache miss: %v", err)
-	}
-
-	wa.cache[key] = val
-	return wa.cache[key], nil
 }
 
 // buildTemplates finds, compiles, and registers all view templates for this
@@ -144,7 +157,7 @@ func (wa *Webapp) PostCreateRecipe(w http.ResponseWriter, r *http.Request) {
 	}
 
 	fmt.Println("loading url", recipeUrl)
-	raw, err := wa.cacheGet(fmt.Sprintf("recipes:raw:%s", u), func() (string, error) {
+	raw, err := wa.cache.Get(fmt.Sprintf("recipes:raw:%s", u), func() (string, error) {
 		raw, err := helpers.FetchRawFromURL(recipeUrl)
 		if err != nil {
 			return "", err
@@ -165,7 +178,7 @@ func (wa *Webapp) PostCreateRecipe(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	md, err := wa.cacheGet(fmt.Sprintf("recipes:parsed:%s", u), func() (string, error) {
+	md, err := wa.cache.Get(fmt.Sprintf("recipes:parsed:%s", u), func() (string, error) {
 		return helpers.CreateMarkdownFromRaw(recipeUrl, raw)
 	})
 	if err != nil {
@@ -181,7 +194,7 @@ func (wa *Webapp) PostCreateRecipe(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	summary, err := wa.cacheGet(fmt.Sprintf("recipes:summarized:%s", u), func() (string, error) {
+	summary, err := wa.cache.Get(fmt.Sprintf("recipes:summarized:%s", u), func() (string, error) {
 		return models.SummarizeRecipe(ctx, model, md)
 	})
 	if err != nil {
@@ -230,7 +243,7 @@ func (wa *Webapp) GetRecipeWineSuggestions(w http.ResponseWriter, r *http.Reques
 
 	fmt.Println("loading url", recipeUrl)
 
-	summary, err := wa.cacheGet(fmt.Sprintf("recipes:summarized:%s", u), func() (string, error) {
+	summary, err := wa.cache.Get(fmt.Sprintf("recipes:summarized:%s", u), func() (string, error) {
 		return "", fmt.Errorf("expected a summary to be generated before this call")
 	})
 	if err != nil {
@@ -246,7 +259,7 @@ func (wa *Webapp) GetRecipeWineSuggestions(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	suggestions, err := wa.cacheGet(fmt.Sprintf("recipes:suggestions-json:%s", u), func() (string, error) {
+	suggestions, err := wa.cache.Get(fmt.Sprintf("recipes:suggestions-json:%s", u), func() (string, error) {
 		return models.GeneratePairingSuggestions(ctx, model, summary)
 	})
 	if err != nil {

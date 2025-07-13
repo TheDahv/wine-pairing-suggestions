@@ -15,15 +15,14 @@ import (
 	"github.com/tmc/langchaingo/llms/bedrock"
 )
 
-const awsProfileName = "WinePairingSuggestions"
-
 // MakeBedrockModel establishes a connection to AWS Bedrock. When working
-// locally, the code assumes the local environment has an AWS configuration
-// profile called "WinePairingSuggestions" containing the proper IAM role
-// credentials to talk to AWS Bedrock. It's configured to return a Claude 3.5
-// Haiku model. It returns a LangChain instance configured for Bedrock.
+// locally, the code assumes the local environment has an AWS credentials for a
+// properly configured IAM role loaded in environment variables (see
+// `env.example`). It's configured to return a Claude 3.5 Haiku model. It
+// returns a LangChain instance configured for Bedrock.
 func MakeBedrockModel(ctx context.Context) (llms.Model, error) {
-	cfg, err := config.LoadDefaultConfig(ctx, config.WithSharedConfigProfile(awsProfileName))
+	// cfg, err := config.LoadDefaultConfig(ctx, config.WithSharedConfigProfile(awsProfileName))
+	cfg, err := config.LoadDefaultConfig(ctx)
 	if err != nil {
 		log.Fatalf("unable to load SDK config, %v\n", err)
 	}

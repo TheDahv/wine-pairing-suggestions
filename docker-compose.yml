@@ -1,0 +1,30 @@
+networks:
+  wine-net:
+    driver: bridge
+
+services:
+  webapp:
+    build: .
+    env_file: ".env"
+    environment:
+      - REDIS_HOST=cache
+      - REDIS_PORT=6379
+    ports:
+      - "3000:3000"
+    volumes:
+      - /tmp/wine-pairing-suggestions/bin:/tmp/wine-pairing-suggestions/bin
+      - .:/usr/src/app
+    networks:
+      - wine-net
+
+  cache:
+    image: redis:latest
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    networks:
+      - wine-net
+
+volumes:
+  redis-data:

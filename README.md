@@ -25,14 +25,25 @@ following to use:
 * AWS Bedrock
 ** Create an IAM role or credential that can invoke Bedrock models.
 ** Ensure that Claude Haiku 3.5 is available for your account.
-** Add your credentials to `.aws/config` and `./aws/credentials` in a profile called `WinePairingSuggestions`.
+** Add your credentials as environment variables. See `env.example`.
 
-## Running
+## Running in Development
 
 This project contains a CLI app and a web app to drive the entire flow.
 
-For the web app, download and run [Air](https://github.com/air-verse/air). This project
-is already configured for Air, so just run `air` to start listening for changes and serve
-your project.
+Install [Docker](https://www.docker.com/) and
+[Docker Compose](https://docs.docker.com/compose/) and run the following to load the development stack:
+
+```bash
+docker-compose up -d
+```
+
+Watch development logs with:
+```
+docker-compose logs webapp -f
+```
+
+The development server uses [Air](https://github.com/air-verse/air)
+to reload the server after file changes.
 
 Open a browser to `http://localhost:3000` to get started.
