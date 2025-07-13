@@ -2,11 +2,4 @@
     <div class="box">
         <p class="content">{{ .Summary }}</p>
     </div>
-
-    <div hx-get="/recipes/suggestions/{{ .RecipeURL | urlquery }}" hx-target="#suggestions">
-        <button class="button is-primary">
-            Get Wine Suggestions
-        </button>
-        <p class="htmx-indicator"><progress class="progress is-small is-primary" max="100">Loading...</progress></p>
-    </div>
 </div>

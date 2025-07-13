@@ -81,7 +81,7 @@ func NewWebapp(port int, options ...Option) (*Webapp, error) {
 // Start registers the route handlers on the web app and begins listening for traffic.
 func (wa *Webapp) Start(port int) error {
 	mux := http.NewServeMux()
-	mux.HandleFunc("POST /recipes/summary/", wa.PostCreateRecipe)
+	mux.HandleFunc("POST /recipes/summary/{url}", wa.PostCreateRecipe)
 	mux.HandleFunc("GET /recipes/suggestions/{url}", wa.GetRecipeWineSuggestions)
 	mux.HandleFunc("GET /", wa.GetHome)
 
@@ -141,7 +141,8 @@ func (wa *Webapp) PostCreateRecipe(w http.ResponseWriter, r *http.Request) {
 	ctx := context.Background()
 	fmt.Println("Handling PostCreateRecipe")
 
-	u := r.FormValue("url")
+	//u := r.FormValue("url")
+	u := r.PathValue("url")
 	fmt.Println("url param")
 	if u == "" {
 		w.WriteHeader(http.StatusBadRequest)
@@ -211,6 +212,8 @@ func (wa *Webapp) PostCreateRecipe(w http.ResponseWriter, r *http.Request) {
 		Summary:   summary,
 	}
 
+	w.Header().Add("HX-Trigger", "newRecipeSummary")
+
 	if err := wa.tmpl.Lookup("partials/_recipesummary.html").Execute(w, tmp); err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		fmt.Fprintf(w, "unable to render summary: %v", err)
@@ -224,7 +227,7 @@ func (wa *Webapp) PostCreateRecipe(w http.ResponseWriter, r *http.Request) {
 // minimizes the need to pass the summary to this endpoint in the request.
 func (wa *Webapp) GetRecipeWineSuggestions(w http.ResponseWriter, r *http.Request) {
 	ctx := context.Background()
-	fmt.Println("Handling PostCreateRecipe")
+	fmt.Println("Handling GetRecipeWineSuggestions")
 
 	u := r.PathValue("url")
 	fmt.Println("url param")

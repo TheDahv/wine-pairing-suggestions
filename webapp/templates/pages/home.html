@@ -1,22 +1,43 @@
 {{template "layouts/base.html" .}}
 
 {{define "main"}}
+
+<script>
+    document.body.addEventListener('htmx:configRequest', function (evt) {
+        switch (evt.detail.target.id) {
+            case 'summary': {
+                const url = evt.target.querySelector('input[type="url"]').value;
+                evt.detail.path = `/recipes/summary/${encodeURIComponent(url)}`
+                break;
+            }
+            case 'suggestions': {
+                const url = document.querySelector('input[type="url"]').value;
+                evt.detail.path = `/recipes/suggestions/${encodeURIComponent(url)}`;
+                break;
+            }
+        }
+    });
+</script>
+
 <h1 class="title">Wine and Food Pairing Suggestions</h1>
 
-<form hx-post="/recipes/summary/" hx-target="#summary">
-    <p>
-        <label for="url">
-            Let's add the URL for a recipe you want to pair.
-            <input name="url" type="url">
-        </label>
-    </p>
-    <p><input type="submit" class="button is-primary" value="Scan"></p>
-    <p class="htmx-indicator"><progress class="progress is-small is-primary" max="100">Loading...</progress></p>
-</form>
+<div>
+    <form hx-post="/recipes/summary/:url" hx-target="#summary" hx-swap="innerHtml">
+        <p>
+            <label for="url">
+                Let's add the URL for a recipe you want to pair.
+                <input name="url" type="url">
+            </label>
+        </p>
+        <p><input type="submit" class="button is-primary" value="Scan"></p>
+        <p class="htmx-indicator"><progress class="progress is-small is-primary" max="100">Loading...</progress></p>
+    </form>
 
-<div id="summary">
-</div>
+    <div id="summary">
+    </div>
 
-<div id="suggestions">
+    <div id="suggestions" hx-trigger="newRecipeSummary from:body" hx-get="/recipes/suggestions/$recipeURL">
+        <p class="htmx-indicator"><progress class="progress is-small is-primary" max="100">Loading...</progress></p>
+    </div>
 </div>
 {{end}}
