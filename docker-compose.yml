@@ -13,7 +13,7 @@ services:
       - "3000:3000"
     volumes:
       - /tmp/wine-pairing-suggestions/bin:/tmp/wine-pairing-suggestions/bin
-      - .:/usr/src/app
+      - .:/usr/src/app:cached
     networks:
       - wine-net
 
