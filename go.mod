@@ -7,6 +7,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/config v1.27.12
 	github.com/aws/aws-sdk-go-v2/service/bedrockruntime v1.8.1
 	github.com/briandowns/spinner v1.23.2
+	github.com/golang-jwt/jwt/v5 v5.2.2
 	github.com/redis/go-redis/v9 v9.11.0
 	github.com/tmc/langchaingo v0.1.13
 )

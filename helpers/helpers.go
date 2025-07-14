@@ -1,13 +1,20 @@
 package helpers
 
 import (
+	"crypto/rsa"
+	"encoding/base64"
+	"encoding/json"
 	"fmt"
 	"io"
+	"math/big"
 	"net/http"
 	"net/url"
 
 	md "github.com/JohannesKaufmann/html-to-markdown"
+	"github.com/golang-jwt/jwt/v5"
 )
+
+const googleCertsURL = "https://www.googleapis.com/oauth2/v3/certs"
 
 // FetchRawFromURL fetches raw HTML encoding recipe content from the given URL.
 func FetchRawFromURL(url string) (io.ReadCloser, error) {
@@ -44,4 +51,61 @@ func CreateMarkdownFromRaw(domainURL, content string) (string, error) {
 	}
 
 	return markdown, nil
+}
+
+type googleKeysResponse struct {
+	Keys []struct {
+		Algorithm string `json:"alg"`
+		KeyID     string `json:"kid"`
+		TokenN    string `json:"n"`
+		TokenE    string `json:"e"`
+	} `json:"keys"`
+}
+
+// Claims models the Google credential response payload. See:
+// https://developers.google.com/identity/gsi/web/reference/js-reference#CredentialResponse
+type Claims struct {
+	AccountID string `json:"sub"`
+	Email     string `json:"email"`
+	jwt.RegisteredClaims
+}
+
+func GetGoogleJWTToken(algorithm string) (*rsa.PublicKey, error) {
+	key := &rsa.PublicKey{}
+
+	c := http.Client{}
+	resp, err := c.Get(googleCertsURL)
+	if err != nil {
+		return key, fmt.Errorf("unable to fetch from Google: %v", err)
+	}
+	defer resp.Body.Close()
+
+	contents, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return key, fmt.Errorf("unable to read response body: %v", err)
+	}
+
+	var response googleKeysResponse
+	if err := json.Unmarshal(contents, &response); err != nil {
+		return key, fmt.Errorf("unable to parse response JSON: %v", err)
+	}
+
+	for _, k := range response.Keys {
+		if k.Algorithm == algorithm {
+			if !(k.TokenE == "AQAB" || k.TokenE == "AAEAAQ") {
+				return key, fmt.Errorf("unrecognized exponent: %s", k.TokenE)
+			}
+			key.E = 65537
+
+			nb, err := base64.RawURLEncoding.DecodeString(k.TokenN)
+			if err != nil {
+				return key, fmt.Errorf("unable to decode N: %v", err)
+			}
+			key.N = new(big.Int).SetBytes(nb)
+
+			return key, nil
+		}
+	}
+
+	return key, fmt.Errorf("algorithm '%s' was not in certificates response", algorithm)
 }

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	rdb "github.com/redis/go-redis/v9"
 )
@@ -14,6 +15,8 @@ type Resolver func() (string, error)
 // Cacher describes the functionality of a cache provider.
 type Cacher interface {
 	Get(string, Resolver) (string, error)
+	Set(string, string) error
+	SetEx(string, string, int) error
 	GetKeys(string) ([]string, error)
 }
 
@@ -49,6 +52,15 @@ func (m *memory) GetKeys(pattern string) ([]string, error) {
 		}
 	}
 	return keys, nil
+}
+
+func (m *memory) Set(key string, val string) error {
+	m.cache[key] = val
+	return nil
+}
+
+func (m *memory) SetEx(key string, val string, seconds int) error {
+	return m.Set(key, val)
 }
 
 type redis struct {
@@ -98,4 +110,13 @@ func (r *redis) GetKeys(pattern string) ([]string, error) {
 	}
 
 	return keys, err
+}
+
+func (r *redis) Set(key string, val string) error {
+	return r.SetEx(key, val, 0)
+}
+
+func (r *redis) SetEx(key string, val string, seconds int) error {
+	ctx := context.TODO()
+	return r.conn.Set(ctx, key, val, time.Duration(seconds)*time.Second).Err()
 }

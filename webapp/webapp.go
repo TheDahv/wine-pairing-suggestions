@@ -14,18 +14,25 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"time"
+
+	"github.com/golang-jwt/jwt/v5"
 
 	"github.com/thedahv/wine-pairing-suggestions/cache"
 	"github.com/thedahv/wine-pairing-suggestions/helpers"
 	"github.com/thedahv/wine-pairing-suggestions/models"
 )
 
+const sessionName = "wine-suggestions-session"
+
 // Webapp contains handlers and functionality suited for implementing a wine suggestions web application.
 // Construct a new Webapp with NewWebapp.
 type Webapp struct {
-	port  int
-	tmpl  *template.Template
-	cache cache.Cacher
+	port           int
+	tmpl           *template.Template
+	cache          cache.Cacher
+	googleClientID string
+	hostname       string
 }
 
 // Option configures the Webapp with various options
@@ -45,6 +52,22 @@ func WithMemoryCache() Option {
 func WithRedisCache(host string, port int) Option {
 	return func(wa *Webapp) error {
 		wa.cache = cache.NewRedis(host, port)
+		return nil
+	}
+}
+
+// WithGoogleClientID configures settings for Google OAuth.
+func WithGoogleClientID(id string) Option {
+	return func(wa *Webapp) error {
+		wa.googleClientID = id
+		return nil
+	}
+}
+
+// WithHostname configures the protocol and hostname to configure OAuth redirects.
+func WithHostname(hostname string) Option {
+	return func(wa *Webapp) error {
+		wa.hostname = hostname
 		return nil
 	}
 }
@@ -83,13 +106,70 @@ func NewWebapp(port int, options ...Option) (*Webapp, error) {
 // Start registers the route handlers on the web app and begins listening for traffic.
 func (wa *Webapp) Start(port int) error {
 	mux := http.NewServeMux()
-	mux.HandleFunc("POST /recipes/summary/{url}", wa.PostCreateRecipe)
-	mux.HandleFunc("GET /recipes/suggestions/recent", wa.GetRecentSuggestions)
-	mux.HandleFunc("GET /recipes/suggestions/{url}", wa.GetRecipeWineSuggestions)
-	mux.HandleFunc("GET /", wa.GetHome)
+	mux.HandleFunc("POST /recipes/summary/{url}", wa.withSessionRequired(wa.PostCreateRecipe))
+	mux.HandleFunc("GET /recipes/suggestions/recent", wa.withSessionRequired(wa.GetRecentSuggestions))
+	mux.HandleFunc("GET /recipes/suggestions/{url}", wa.withSessionRequired(wa.GetRecipeWineSuggestions))
+	mux.HandleFunc("GET /login", wa.GetLogin)
+	mux.HandleFunc("POST /oauth/response/", wa.PostOauthResponse)
+	mux.HandleFunc("GET /", wa.withRedirectForLogin(wa.GetHome))
 
 	fmt.Printf("listening on :%d\n", port)
 	return http.ListenAndServe(fmt.Sprintf(":%d", wa.port), mux)
+}
+
+func (wa *Webapp) getCookie(name string, r *http.Request) (*http.Cookie, error) {
+	return r.Cookie(name)
+}
+
+func (wa *Webapp) setCookie(name string, val string, w http.ResponseWriter) {
+	cookie := http.Cookie{
+		Name:     name,
+		Value:    val,
+		Expires:  time.Now().Add(7 * 24 * time.Hour),
+		Path:     "/",
+		HttpOnly: true,
+		Secure:   true,
+		SameSite: http.SameSiteLaxMode,
+	}
+
+	http.SetCookie(w, &cookie)
+}
+
+func (wa *Webapp) withSessionRequired(next http.HandlerFunc) http.HandlerFunc {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, err := r.Cookie(sessionName)
+		if err == http.ErrNoCookie {
+			w.WriteHeader(http.StatusUnauthorized)
+			fmt.Fprint(w, "session required")
+			return
+		}
+
+		if err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			fmt.Fprintf(w, "unable to read session cookie: %v", err)
+			return
+		}
+
+		next.ServeHTTP(w, r)
+	})
+}
+
+func (wa *Webapp) withRedirectForLogin(next http.HandlerFunc) http.HandlerFunc {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, err := r.Cookie(sessionName)
+		if err == http.ErrNoCookie {
+			http.Redirect(w, r, "/login", http.StatusSeeOther)
+			return
+		}
+
+		if err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			fmt.Fprintf(w, "unable to read session cookie: %v", err)
+			return
+		}
+
+		next.ServeHTTP(w, r)
+	})
 }
 
 // buildTemplates finds, compiles, and registers all view templates for this
@@ -143,25 +223,18 @@ func (wa *Webapp) GetHome(w http.ResponseWriter, r *http.Request) {
 func (wa *Webapp) PostCreateRecipe(w http.ResponseWriter, r *http.Request) {
 	ctx := context.Background()
 	fmt.Println("Handling PostCreateRecipe")
-
-	//u := r.FormValue("url")
 	u := r.PathValue("url")
-	fmt.Println("url param")
 	if u == "" {
 		w.WriteHeader(http.StatusBadRequest)
 		fmt.Fprintf(w, "URL required")
 		return
 	}
 
-	recipeUrl, err := url.PathUnescape(u)
-	if err != nil {
-		w.WriteHeader(http.StatusBadRequest)
-		fmt.Fprintf(w, "invalid URL encoding: %v", err)
-		return
-	}
-
-	fmt.Println("loading url", recipeUrl)
 	raw, err := wa.cache.Get(fmt.Sprintf("recipes:raw:%s", u), func() (string, error) {
+		recipeUrl, err := url.PathUnescape(u)
+		if err != nil {
+			return "", fmt.Errorf("invalid URL encoding (%s): %v", u, err)
+		}
 		raw, err := helpers.FetchRawFromURL(recipeUrl)
 		if err != nil {
 			return "", err
@@ -183,7 +256,7 @@ func (wa *Webapp) PostCreateRecipe(w http.ResponseWriter, r *http.Request) {
 	}
 
 	md, err := wa.cache.Get(fmt.Sprintf("recipes:parsed:%s", u), func() (string, error) {
-		return helpers.CreateMarkdownFromRaw(recipeUrl, raw)
+		return helpers.CreateMarkdownFromRaw(u, raw)
 	})
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
@@ -208,11 +281,9 @@ func (wa *Webapp) PostCreateRecipe(w http.ResponseWriter, r *http.Request) {
 	}
 
 	tmp := struct {
-		RecipeURL string `json:"url"`
-		Summary   string `json:"summary"`
+		Summary string `json:"summary"`
 	}{
-		RecipeURL: recipeUrl,
-		Summary:   summary,
+		Summary: summary,
 	}
 
 	w.Header().Add("Content-Type", "application/json")
@@ -234,21 +305,11 @@ func (wa *Webapp) GetRecipeWineSuggestions(w http.ResponseWriter, r *http.Reques
 	fmt.Println("Handling GetRecipeWineSuggestions")
 
 	u := r.PathValue("url")
-	fmt.Println("url param")
 	if u == "" {
 		w.WriteHeader(http.StatusBadRequest)
 		fmt.Fprintf(w, "URL required")
 		return
 	}
-
-	recipeUrl, err := url.PathUnescape(u)
-	if err != nil {
-		w.WriteHeader(http.StatusBadRequest)
-		fmt.Fprintf(w, "invalid URL encoding: %v", err)
-		return
-	}
-
-	fmt.Println("loading url", recipeUrl)
 
 	summary, err := wa.cache.Get(fmt.Sprintf("recipes:summarized:%s", u), func() (string, error) {
 		return "", fmt.Errorf("expected a summary to be generated before this call")
@@ -310,5 +371,75 @@ func (wa *Webapp) GetRecentSuggestions(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Add("Content-Type", "application/json")
 	fmt.Fprint(w, string(out))
-	return
+}
+
+func (wa *Webapp) GetLogin(w http.ResponseWriter, r *http.Request) {
+	context := struct {
+		GoogleClientID string
+		Hostname       string
+	}{
+		GoogleClientID: wa.googleClientID,
+		Hostname:       wa.hostname,
+	}
+	fmt.Println(context)
+	if err := wa.tmpl.Lookup("pages/login.html").Execute(w, context); err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		fmt.Fprintf(w, "unable to render login page")
+	}
+}
+
+func (wa *Webapp) PostOauthResponse(w http.ResponseWriter, r *http.Request) {
+	if err := r.ParseForm(); err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		fmt.Fprintf(w, "unable to parse request form: %v", err)
+		return
+	}
+
+	csrfToken := r.Form["g_csrf_token"][0]
+	csrfCookie, err := wa.getCookie("g_csrf_token", r)
+
+	if err == http.ErrNoCookie {
+		w.WriteHeader(http.StatusBadRequest)
+		fmt.Fprint(w, "no csrf cookie set")
+		return
+	}
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		fmt.Fprintf(w, "unable to get csrf cookie: %v", err)
+		return
+	}
+	if csrfToken != csrfCookie.Value {
+		w.WriteHeader(http.StatusBadRequest)
+		fmt.Fprint(w, "failed to verify double submit cookie")
+		return
+	}
+
+	expectedMethod := "RS256"
+	secret, err := helpers.GetGoogleJWTToken(expectedMethod)
+	if err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		fmt.Fprintf(w, "unable to fetch latest Google certs: %v", err)
+		return
+	}
+
+	token := r.Form["credential"][0]
+	parsed, err := jwt.ParseWithClaims(token, &helpers.Claims{}, func(t *jwt.Token) (interface{}, error) {
+		if alg := t.Header["alg"]; alg != expectedMethod {
+			return nil, fmt.Errorf("expected signing method %s, got %s", expectedMethod, alg)
+		}
+
+		return secret, nil
+	})
+
+	claims, ok := parsed.Claims.(*helpers.Claims)
+	if !ok {
+		w.WriteHeader(http.StatusInternalServerError)
+		fmt.Fprintf(w, "unable to parse response as Google JWT")
+	}
+
+	wa.cache.Set(fmt.Sprintf("accounts:%s", claims.AccountID), claims.Email)
+	wa.cache.SetEx(fmt.Sprintf("sessions:%s", claims.AccountID), "", 60*60*24*7)
+	wa.setCookie(sessionName, claims.AccountID, w)
+
+	http.Redirect(w, r, "/", http.StatusFound)
 }

@@ -18,7 +18,11 @@ func main() {
 		return int(port)
 	}()
 
-	wa, err := webapp.NewWebapp(3000, webapp.WithRedisCache(host, port))
+	wa, err := webapp.NewWebapp(3000,
+		webapp.WithRedisCache(host, port),
+		webapp.WithGoogleClientID(os.Getenv("GOOGLE_CLIENT_ID")),
+		webapp.WithHostname(os.Getenv("HOSTNAME")),
+	)
 
 	if err != nil {
 		log.Fatalf("unable to build webapp: %v", err)
