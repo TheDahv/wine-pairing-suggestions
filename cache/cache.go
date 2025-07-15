@@ -3,6 +3,7 @@ package cache
 import (
 	"context"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
@@ -17,7 +18,10 @@ type Cacher interface {
 	Get(string, Resolver) (string, error)
 	Set(string, string) error
 	SetEx(string, string, int) error
+	SetNx(string, string, int) error
+	Delete(string) error
 	GetKeys(string) ([]string, error)
+	Decr(string) error
 }
 
 type memory struct {
@@ -61,6 +65,31 @@ func (m *memory) Set(key string, val string) error {
 
 func (m *memory) SetEx(key string, val string, seconds int) error {
 	return m.Set(key, val)
+}
+
+func (m *memory) SetNx(key string, val string, seconds int) error {
+	m.cache[key] = val
+	return nil
+}
+
+func (m *memory) Delete(key string) error {
+	delete(m.cache, key)
+	return nil
+}
+
+func (m *memory) Decr(key string) error {
+	val, ok := m.cache[key]
+	if !ok {
+		return fmt.Errorf("key not in cache")
+	}
+
+	ival, err := strconv.ParseInt(val, 10, 64)
+	if err != nil {
+		return fmt.Errorf("unable to parse value as int: %v", err)
+	}
+
+	m.cache[key] = strconv.Itoa(int(ival) - 1)
+	return nil
 }
 
 type redis struct {
@@ -119,4 +148,19 @@ func (r *redis) Set(key string, val string) error {
 func (r *redis) SetEx(key string, val string, seconds int) error {
 	ctx := context.TODO()
 	return r.conn.Set(ctx, key, val, time.Duration(seconds)*time.Second).Err()
+}
+
+func (r *redis) SetNx(key string, val string, seconds int) error {
+	ctx := context.TODO()
+	return r.conn.SetNX(ctx, key, val, time.Second*time.Duration(seconds)).Err()
+}
+
+func (r *redis) Delete(key string) error {
+	ctx := context.TODO()
+	return r.conn.Del(ctx, key).Err()
+}
+
+func (r *redis) Decr(key string) error {
+	ctx := context.TODO()
+	return r.conn.Decr(ctx, key).Err()
 }

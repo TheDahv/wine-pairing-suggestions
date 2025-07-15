@@ -82,7 +82,19 @@
     });
 </script>
 
-<h1 class="title is-1">Wine and Food Pairing Suggestions</h1>
+<div>
+</div>
+
+<div class="columns">
+    <div class="column">
+        <h1 class="title is-1">Wine Pairing Suggestions</h1>
+    </div>
+    <div class="column is-two-fifths is-size-7 has-text-right-desktop">
+        <p>Logged in as {{.Email}}</p>
+        <p>({{.Quota}} Suggestions Left)</p>
+        <p><a href="/logout">Logout</a></p>
+    </div>
+</div>
 
 <form class="box" x-data @submit.prevent="$store.recipe.fetch()">
     <p class="block">
@@ -91,7 +103,9 @@
             <input name="url" type="text" x-model="$store.recipe.url">
         </label>
     </p>
-    <p class="block"><input type="submit" class="button is-primary" value="Scan" x-bind:disabled="!$store.recipe.url">
+    <p class="block" x-data="{ quota: {{.Quota}} }">
+        <input type="submit" class="button is-primary" value="Scan"
+            x-bind:disabled="!($store.recipe.url && {{.Quota}})" />
     </p>
     <div class="block" x-init="$store.previousrecipes.fetch()" x-data>
         <div x-show="$store.previousrecipes.state == 'SUCCESS'">

@@ -13,6 +13,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"time"
 
@@ -23,7 +24,19 @@ import (
 	"github.com/thedahv/wine-pairing-suggestions/models"
 )
 
-const sessionName = "wine-suggestions-session"
+const sessionCookieName = "wine-suggestions-session"
+
+type contextKey string
+
+const sessionContextName contextKey = "AccountId"
+const quotaContextName contextKey = "quota"
+const emailContextName contextKey = "email"
+const maxQuota = 10
+const maxQuotaLifespanSeconds = 60 * 60 * 7
+
+func sessionQuotaKey(accountID string) string {
+	return fmt.Sprintf("quotas:%s", accountID)
+}
 
 // Webapp contains handlers and functionality suited for implementing a wine suggestions web application.
 // Construct a new Webapp with NewWebapp.
@@ -106,12 +119,13 @@ func NewWebapp(port int, options ...Option) (*Webapp, error) {
 // Start registers the route handlers on the web app and begins listening for traffic.
 func (wa *Webapp) Start(port int) error {
 	mux := http.NewServeMux()
-	mux.HandleFunc("POST /recipes/summary/{url}", wa.withSessionRequired(wa.PostCreateRecipe))
+	mux.HandleFunc("POST /recipes/summary/{url}", wa.withSessionRequired(wa.withSufficientQuota(wa.PostCreateRecipe)))
 	mux.HandleFunc("GET /recipes/suggestions/recent", wa.withSessionRequired(wa.GetRecentSuggestions))
-	mux.HandleFunc("GET /recipes/suggestions/{url}", wa.withSessionRequired(wa.GetRecipeWineSuggestions))
+	mux.HandleFunc("GET /recipes/suggestions/{url}", wa.withSessionRequired(wa.withSufficientQuota(wa.GetRecipeWineSuggestions)))
+	mux.HandleFunc("GET /logout", wa.withSessionRequired(wa.DeleteSession))
 	mux.HandleFunc("GET /login", wa.GetLogin)
 	mux.HandleFunc("POST /oauth/response/", wa.PostOauthResponse)
-	mux.HandleFunc("GET /", wa.withRedirectForLogin(wa.GetHome))
+	mux.HandleFunc("GET /", wa.withRedirectForLogin(wa.withAccountDetails(wa.GetHome)))
 
 	fmt.Printf("listening on :%d\n", port)
 	return http.ListenAndServe(fmt.Sprintf(":%d", wa.port), mux)
@@ -135,9 +149,25 @@ func (wa *Webapp) setCookie(name string, val string, w http.ResponseWriter) {
 	http.SetCookie(w, &cookie)
 }
 
+func (wa *Webapp) deleteCookie(name string, w http.ResponseWriter) {
+	cookie := http.Cookie{
+		Name:     name,
+		Value:    "",
+		Expires:  time.Unix(0, 0),
+		Path:     "/",
+		HttpOnly: true,
+		Secure:   true,
+		SameSite: http.SameSiteLaxMode,
+	}
+
+	http.SetCookie(w, &cookie)
+}
+
 func (wa *Webapp) withSessionRequired(next http.HandlerFunc) http.HandlerFunc {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		_, err := r.Cookie(sessionName)
+		fmt.Println("in withSessionRequired")
+		// TODO encode the account ID somehow so it's not just bare in the cookie
+		cookie, err := r.Cookie(sessionCookieName)
 		if err == http.ErrNoCookie {
 			w.WriteHeader(http.StatusUnauthorized)
 			fmt.Fprint(w, "session required")
@@ -150,25 +180,82 @@ func (wa *Webapp) withSessionRequired(next http.HandlerFunc) http.HandlerFunc {
 			return
 		}
 
-		next.ServeHTTP(w, r)
+		fmt.Println("got cookie. setting context")
+		ctx := context.WithValue(r.Context(), sessionContextName, cookie.Value)
+		next.ServeHTTP(w, r.WithContext(ctx))
 	})
 }
 
 func (wa *Webapp) withRedirectForLogin(next http.HandlerFunc) http.HandlerFunc {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		_, err := r.Cookie(sessionName)
+		accountId := r.Context().Value(sessionContextName)
+		if accountId == "" {
+			http.Redirect(w, r, "/login", http.StatusSeeOther)
+			return
+		}
+
+		next.ServeHTTP(w, r)
+	})
+}
+
+func (wa *Webapp) withAccountDetails(next http.HandlerFunc) http.HandlerFunc {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		cookie, err := r.Cookie(sessionCookieName)
 		if err == http.ErrNoCookie {
 			http.Redirect(w, r, "/login", http.StatusSeeOther)
 			return
 		}
 
+		quota, err := wa.cache.Get(fmt.Sprintf("quotas:%s", cookie.Value), func() (string, error) {
+			return "", fmt.Errorf("expected quota in quotas cache")
+		})
 		if err != nil {
 			w.WriteHeader(http.StatusInternalServerError)
-			fmt.Fprintf(w, "unable to read session cookie: %v", err)
+			fmt.Fprintf(w, "unable to get quota: %v", err)
 			return
 		}
 
-		next.ServeHTTP(w, r)
+		email, err := wa.cache.Get(fmt.Sprintf("accounts:%s", cookie.Value), func() (string, error) {
+			return "", fmt.Errorf("expected email in accounts cache")
+		})
+		if err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			fmt.Fprintf(w, "unable to get email: %v", err)
+			return
+
+		}
+
+		ctx := context.WithValue(context.WithValue(r.Context(), quotaContextName, quota), emailContextName, email)
+		next.ServeHTTP(w, r.WithContext(ctx))
+	})
+}
+
+func (wa *Webapp) withSufficientQuota(next http.HandlerFunc) http.HandlerFunc {
+	return wa.withAccountDetails(func(w http.ResponseWriter, r *http.Request) {
+		var quota string
+
+		if q, ok := r.Context().Value(quotaContextName).(string); ok {
+			quota = q
+		} else {
+			w.WriteHeader(http.StatusInternalServerError)
+			fmt.Fprintf(w, "quota not loaded in context")
+			return
+		}
+
+		val, err := strconv.ParseInt(quota, 10, 64)
+		if err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			fmt.Fprintf(w, "unable to parse quota: %v", err)
+			return
+		}
+
+		if val <= 0 {
+			w.WriteHeader(http.StatusBadRequest)
+			fmt.Fprintf(w, "the current account has insufficient quota")
+			return
+		}
+
+		next(w, r)
 	})
 }
 
@@ -203,6 +290,30 @@ func (wa *Webapp) buildTemplates(root string) error {
 // GetHome implements home route "GET /" for the web app, serving the home page
 // and initializing the app.
 func (wa *Webapp) GetHome(w http.ResponseWriter, r *http.Request) {
+	var quota, email string
+	if q, ok := r.Context().Value(quotaContextName).(string); ok {
+		quota = q
+	} else {
+		w.WriteHeader(http.StatusInternalServerError)
+		fmt.Fprintf(w, "quota not loaded in context")
+		return
+	}
+	if e, ok := r.Context().Value(emailContextName).(string); ok {
+		email = e
+	} else {
+		w.WriteHeader(http.StatusInternalServerError)
+		fmt.Fprintf(w, "email not loaded in context")
+		return
+	}
+
+	data := struct {
+		Email string
+		Quota string
+	}{
+		Email: email,
+		Quota: quota,
+	}
+
 	t := wa.tmpl.Lookup("pages/home.html")
 	if t == nil {
 		// Set a 500 status on the response
@@ -211,7 +322,7 @@ func (wa *Webapp) GetHome(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := wa.tmpl.Lookup("pages/home.html").Execute(w, nil); err != nil {
+	if err := wa.tmpl.Lookup("pages/home.html").Execute(w, data); err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		fmt.Fprintf(w, "unable to render template: %v", err)
 	}
@@ -264,6 +375,7 @@ func (wa *Webapp) PostCreateRecipe(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// TODO Provide a way for the LLM to indicate it couldn't summarize the recipe
 	model, err := models.MakeBedrockModel(ctx)
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
@@ -328,8 +440,17 @@ func (wa *Webapp) GetRecipeWineSuggestions(w http.ResponseWriter, r *http.Reques
 	}
 
 	suggestions, err := wa.cache.Get(fmt.Sprintf("recipes:suggestions-json:%s", u), func() (string, error) {
+		// Only decrement quota if the user has a cache miss
+		accountID := r.Context().Value(sessionContextName)
+		if a, ok := accountID.(string); ok {
+			wa.cache.Decr(sessionQuotaKey(a))
+		} else {
+			return "", fmt.Errorf("unexpected session context type")
+		}
+
 		return models.GeneratePairingSuggestions(ctx, model, summary)
 	})
+
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		fmt.Fprintf(w, "unable to get wine suggestions from the model: %v", err)
@@ -381,11 +502,21 @@ func (wa *Webapp) GetLogin(w http.ResponseWriter, r *http.Request) {
 		GoogleClientID: wa.googleClientID,
 		Hostname:       wa.hostname,
 	}
-	fmt.Println(context)
 	if err := wa.tmpl.Lookup("pages/login.html").Execute(w, context); err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		fmt.Fprintf(w, "unable to render login page")
 	}
+}
+
+func (wa *Webapp) DeleteSession(w http.ResponseWriter, r *http.Request) {
+	accountID := r.Context().Value(sessionContextName)
+	if err := wa.cache.Delete(fmt.Sprintf("sessions:%s", accountID)); err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		fmt.Fprintf(w, "unable to destroy session: %v", err)
+	}
+
+	wa.deleteCookie(sessionCookieName, w)
+	http.Redirect(w, r, "/login", http.StatusFound)
 }
 
 func (wa *Webapp) PostOauthResponse(w http.ResponseWriter, r *http.Request) {
@@ -439,7 +570,11 @@ func (wa *Webapp) PostOauthResponse(w http.ResponseWriter, r *http.Request) {
 
 	wa.cache.Set(fmt.Sprintf("accounts:%s", claims.AccountID), claims.Email)
 	wa.cache.SetEx(fmt.Sprintf("sessions:%s", claims.AccountID), "", 60*60*24*7)
-	wa.setCookie(sessionName, claims.AccountID, w)
+
+	// Set max quota if not already set
+	wa.cache.SetNx(fmt.Sprintf("quotas:%s", claims.AccountID), strconv.Itoa(maxQuota), maxQuotaLifespanSeconds)
+
+	wa.setCookie(sessionCookieName, claims.AccountID, w)
 
 	http.Redirect(w, r, "/", http.StatusFound)
 }
