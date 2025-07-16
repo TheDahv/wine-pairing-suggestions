@@ -36,7 +36,7 @@ const sessionContextName contextKey = "AccountId"
 const quotaContextName contextKey = "quota"
 const emailContextName contextKey = "email"
 const maxQuota = 10
-const maxQuotaLifespanSeconds = 60 * 60 * 7
+const maxQuotaLifespanSeconds = 60 * 60 * 24 * 7
 
 func sessionQuotaKey(accountID string) string {
 	return fmt.Sprintf("quotas:%s", accountID)
@@ -163,7 +163,6 @@ func (wa *Webapp) deleteCookie(name string, w http.ResponseWriter) {
 
 func (wa *Webapp) withSessionRequired(next http.HandlerFunc) http.HandlerFunc {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		fmt.Println("in withSessionRequired")
 		// TODO encode the account ID somehow so it's not just bare in the cookie
 		cookie, err := r.Cookie(sessionCookieName)
 		if err == http.ErrNoCookie {
@@ -178,7 +177,6 @@ func (wa *Webapp) withSessionRequired(next http.HandlerFunc) http.HandlerFunc {
 			return
 		}
 
-		fmt.Println("got cookie. setting context")
 		ctx := context.WithValue(r.Context(), sessionContextName, cookie.Value)
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
@@ -203,17 +201,21 @@ func (wa *Webapp) withAccountDetails(next http.HandlerFunc) http.HandlerFunc {
 			http.Redirect(w, r, "/login", http.StatusSeeOther)
 			return
 		}
+		accountID := cookie.Value
 
-		quota, err := wa.cache.Get(fmt.Sprintf("quotas:%s", cookie.Value), func() (string, error) {
+		quota, err := wa.cache.Get(fmt.Sprintf("quotas:%s", accountID), func() (string, error) {
 			return "", fmt.Errorf("expected quota in quotas cache")
 		})
 		if err != nil {
-			w.WriteHeader(http.StatusInternalServerError)
-			fmt.Fprintf(w, "unable to get quota: %v", err)
-			return
+			// It's weird for a logged in user to not have a quota. Log it, be generous, and set a new quota.
+			// It may be a timing issue depending on when the underlying expires.
+			fmt.Printf("expected a quota for user %s, but found nothing (not even 0)\n", accountID)
+			qs := strconv.Itoa(maxQuota)
+			wa.cache.SetNx(fmt.Sprintf("quotas:%s", accountID), qs, maxQuotaLifespanSeconds)
+			quota = qs
 		}
 
-		email, err := wa.cache.Get(fmt.Sprintf("accounts:%s", cookie.Value), func() (string, error) {
+		email, err := wa.cache.Get(fmt.Sprintf("accounts:%s", accountID), func() (string, error) {
 			return "", fmt.Errorf("expected email in accounts cache")
 		})
 		if err != nil {
