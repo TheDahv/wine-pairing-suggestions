@@ -2,17 +2,16 @@ package webapp
 
 import (
 	"context"
+	"embed"
 	"encoding/json"
 	"fmt"
 	"html/template"
 	"io"
-	"io/fs"
 	"math/rand/v2"
 	"net/http"
 	"net/url"
-	"os"
+	"path"
 	"path/filepath"
-	"runtime"
 	"strconv"
 	"strings"
 	"time"
@@ -23,6 +22,11 @@ import (
 	"github.com/thedahv/wine-pairing-suggestions/helpers"
 	"github.com/thedahv/wine-pairing-suggestions/models"
 )
+
+//go:embed templates/**/*.html
+var templates embed.FS
+
+const templatesRoot = "templates"
 
 const sessionCookieName = "wine-suggestions-session"
 
@@ -93,13 +97,7 @@ func NewWebapp(port int, options ...Option) (*Webapp, error) {
 		tmpl: template.New(""),
 	}
 
-	_, thispath, _, ok := runtime.Caller(0)
-	if !ok {
-		return nil, fmt.Errorf("unable to determine current package location")
-	}
-	thisdir := filepath.Dir(thispath)
-
-	if err := wa.buildTemplates(filepath.Join(thisdir, "templates")); err != nil {
+	if err := wa.buildTemplates(templatesRoot); err != nil {
 		return nil, fmt.Errorf("unable to build templates: %v", err)
 	}
 
@@ -262,29 +260,39 @@ func (wa *Webapp) withSufficientQuota(next http.HandlerFunc) http.HandlerFunc {
 // buildTemplates finds, compiles, and registers all view templates for this
 // webapp for use in route handlers, throwing an error if anything fails to
 // compile. Templates are named by their file path (including extension) within
-// the templates folder.  For example, a template at
+// the templates folder. For example, a template at
 // "webapp/templates/folder/template.html" will be called
 // "folder/template.html". Use wa.tmpl.Lookup("folder/template.html") to use it
 // in a handler.
-func (wa *Webapp) buildTemplates(root string) error {
-	return filepath.WalkDir(root, func(path string, info fs.DirEntry, err error) error {
-		if err != nil {
-			return fmt.Errorf("error visiting template at %s: %v", path, err)
-		}
+func (wa *Webapp) buildTemplates(parent string) error {
+	entries, err := templates.ReadDir(parent)
+	if err != nil {
+		return fmt.Errorf("embed ReadDir error on path=%s: %v", parent, err)
+	}
 
-		if info.IsDir() {
-			return nil
-		}
+	for _, e := range entries {
+		n := e.Name()
+		if e.IsDir() {
+			err := wa.buildTemplates(path.Join(parent, n))
+			if err != nil {
+				return err
+			}
+		} else {
+			p := path.Join(parent, n)
+			if parent == "template" {
+				p = n
+			}
 
-		contents, err := os.ReadFile(path)
-		if err != nil {
-			return fmt.Errorf("unable to read template at %s: %v", path, err)
+			contents, err := templates.ReadFile(p)
+			if err != nil {
+				return fmt.Errorf("embed ReadFile error on path=%s: %v", p, err)
+			}
+			name := strings.Replace(p, "templates"+string(filepath.Separator), "", 1)
+			template.Must(wa.tmpl.New(name).Parse(string(contents)))
 		}
+	}
 
-		name := strings.Replace(path, root+string(filepath.Separator), "", 1)
-		template.Must(wa.tmpl.New(name).Parse(string(contents)))
-		return nil
-	})
+	return nil
 }
 
 // GetHome implements home route "GET /" for the web app, serving the home page
