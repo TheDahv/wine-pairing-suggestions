@@ -506,7 +506,12 @@ func (wa *Webapp) GetRecentSuggestions(w http.ResponseWriter, r *http.Request) {
 		urls[i], urls[j] = urls[j], urls[i]
 	})
 
-	out, err := json.Marshal(urls[0:3])
+	var count = 3
+	if len(urls) < count {
+		count = len(urls)
+	}
+
+	out, err := json.Marshal(urls[0:count])
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		fmt.Fprintf(w, "unable to encode URL suggestions: %v", err)
