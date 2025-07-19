@@ -115,7 +115,16 @@ func NewWebapp(port int, options ...Option) (*Webapp, error) {
 }
 
 // Start registers the route handlers on the web app and begins listening for traffic.
-func (wa *Webapp) Start(port int) error {
+func (wa *Webapp) Start() error {
+	fmt.Println("starting up...")
+
+	fmt.Println("checking DB")
+	if ok, err := wa.cache.Check(); !(ok && err == nil) {
+		return fmt.Errorf("problem connecting to cache (ok=%v): %v", ok, err)
+	}
+	fmt.Println("connected to DB")
+
+	fmt.Println("registering routes...")
 	mux := http.NewServeMux()
 	mux.HandleFunc("POST /recipes/summary/{url}", wa.withSessionRequired(wa.withSufficientQuota(wa.PostCreateRecipe)))
 	mux.HandleFunc("GET /recipes/suggestions/recent", wa.withSessionRequired(wa.GetRecentSuggestions))
@@ -123,9 +132,10 @@ func (wa *Webapp) Start(port int) error {
 	mux.HandleFunc("GET /logout", wa.withSessionRequired(wa.DeleteSession))
 	mux.HandleFunc("GET /login", wa.GetLogin)
 	mux.HandleFunc("POST /oauth/response/", wa.PostOauthResponse)
+	mux.HandleFunc("GET /healthz", wa.HealthStatus)
 	mux.HandleFunc("GET /", wa.withRedirectForLogin(wa.withAccountDetails(wa.GetHome)))
 
-	fmt.Printf("listening on :%d\n", port)
+	fmt.Printf("listening on :%d\n", wa.port)
 	return http.ListenAndServe(fmt.Sprintf(":%d", wa.port), mux)
 }
 
@@ -587,4 +597,15 @@ func (wa *Webapp) PostOauthResponse(w http.ResponseWriter, r *http.Request) {
 	wa.setCookie(sessionCookieName, claims.AccountID, w)
 
 	http.Redirect(w, r, "/", http.StatusFound)
+}
+
+func (wa *Webapp) HealthStatus(w http.ResponseWriter, r *http.Request) {
+	if ok, err := wa.cache.Check(); !ok || err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		fmt.Fprintf(w, "unable to connect to data layer: %v", err)
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+	fmt.Fprint(w, "OK")
 }

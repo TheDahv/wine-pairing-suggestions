@@ -9,6 +9,7 @@ services:
     environment:
       - REDIS_HOST=cache
       - REDIS_PORT=6379
+      - PORT=3000
     ports:
       - "3000:3000"
     volumes:

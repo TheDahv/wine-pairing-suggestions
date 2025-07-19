@@ -2,6 +2,7 @@ package cache
 
 import (
 	"context"
+	"crypto/tls"
 	"fmt"
 	"strconv"
 	"strings"
@@ -22,6 +23,7 @@ type Cacher interface {
 	Delete(string) error
 	GetKeys(string) ([]string, error)
 	Decr(string) error
+	Check() (bool, error)
 }
 
 type memory struct {
@@ -92,16 +94,28 @@ func (m *memory) Decr(key string) error {
 	return nil
 }
 
+func (m *memory) Check() (bool, error) {
+	return true, nil
+}
+
 type redis struct {
 	conn *rdb.Client
 }
 
 func NewRedis(host string, port int) *redis {
-	return &redis{conn: rdb.NewClient(&rdb.Options{
+	cacheops := &rdb.Options{
 		Addr:     fmt.Sprintf("%s:%d", host, port),
 		Password: "",
 		DB:       0,
-	})}
+	}
+	// TODO More elegant support for switching on local and hosted connections
+	if strings.Contains(host, "amazonaws.com") {
+		cacheops.TLSConfig = &tls.Config{
+			MinVersion: tls.VersionTLS12,
+		}
+	}
+
+	return &redis{conn: rdb.NewClient(cacheops)}
 }
 
 func (r *redis) Get(key string, onMiss Resolver) (string, error) {
@@ -163,4 +177,14 @@ func (r *redis) Delete(key string) error {
 func (r *redis) Decr(key string) error {
 	ctx := context.TODO()
 	return r.conn.Decr(ctx, key).Err()
+}
+
+func (r *redis) Check() (bool, error) {
+	ctx := context.TODO()
+	p, err := r.conn.Ping(ctx).Result()
+	if err != nil {
+		return false, err
+	}
+
+	return p == "PONG", nil
 }

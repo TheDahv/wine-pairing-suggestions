@@ -10,7 +10,7 @@ import (
 
 func main() {
 	host := os.Getenv("REDIS_HOST")
-	port := func() int {
+	cachePort := func() int {
 		port, err := strconv.ParseInt(os.Getenv("REDIS_PORT"), 10, 64)
 		if err != nil {
 			return 6379
@@ -18,8 +18,15 @@ func main() {
 		return int(port)
 	}()
 
-	wa, err := webapp.NewWebapp(3000,
-		webapp.WithRedisCache(host, port),
+	var serverPort int
+	if p, err := strconv.ParseInt(os.Getenv("PORT"), 10, 64); err != nil {
+		log.Fatalf("unable to parse PORT environment variable: %v", err)
+	} else {
+		serverPort = int(p)
+	}
+
+	wa, err := webapp.NewWebapp(serverPort,
+		webapp.WithRedisCache(host, cachePort),
 		webapp.WithGoogleClientID(os.Getenv("GOOGLE_CLIENT_ID")),
 		webapp.WithHostname(os.Getenv("HOSTNAME")),
 	)
@@ -28,7 +35,7 @@ func main() {
 		log.Fatalf("unable to build webapp: %v", err)
 	}
 
-	if err := wa.Start(3000); err != nil {
+	if err := wa.Start(); err != nil {
 		log.Fatalf("unable to start server: %v", err)
 	}
 }
