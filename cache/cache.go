@@ -147,12 +147,24 @@ func (r *redis) Get(key string, onMiss Resolver) (string, error) {
 
 func (r *redis) GetKeys(pattern string) ([]string, error) {
 	ctx := context.TODO()
-	keys, err := r.conn.Keys(ctx, pattern).Result()
-	if err != nil {
-		return keys, fmt.Errorf("unable to fetch keys from redis: %v", err)
+	var cursor uint64
+	var keys []string
+
+	for {
+		k, c, err := r.conn.Scan(ctx, cursor, pattern, 10).Result()
+		if err != nil {
+			return keys, fmt.Errorf("unable to scan keys from redis: %v", err)
+		}
+
+		keys = append(keys, k...)
+
+		if c == 0 {
+			break
+		}
+		cursor = c
 	}
 
-	return keys, err
+	return keys, nil
 }
 
 func (r *redis) Set(key string, val string) error {
