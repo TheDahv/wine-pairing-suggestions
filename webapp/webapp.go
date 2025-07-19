@@ -12,6 +12,7 @@ import (
 	"net/url"
 	"path"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -37,6 +38,8 @@ const quotaContextName contextKey = "quota"
 const emailContextName contextKey = "email"
 const maxQuota = 10
 const maxQuotaLifespanSeconds = 60 * 60 * 24 * 7
+
+var recentSuggestionRx *regexp.Regexp = regexp.MustCompile(`https?://\S+|www\.\S+`)
 
 func sessionQuotaKey(accountID string) string {
 	return fmt.Sprintf("quotas:%s", accountID)
@@ -494,8 +497,7 @@ func (wa *Webapp) GetRecentSuggestions(w http.ResponseWriter, r *http.Request) {
 
 	var urls []string
 	for _, k := range keys {
-		u := k[strings.Index(k, ":")+1:]
-		u = u[strings.Index(u, ":")+1:]
+		u := recentSuggestionRx.FindString(k)
 		urls = append(urls, u)
 	}
 
