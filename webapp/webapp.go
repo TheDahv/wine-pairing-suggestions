@@ -134,6 +134,7 @@ func (wa *Webapp) Start() error {
 	mux.HandleFunc("GET /recipes/suggestions/{url}", wa.withSessionRequired(wa.withSufficientQuota(wa.GetRecipeWineSuggestions)))
 	mux.HandleFunc("GET /logout", wa.withSessionRequired(wa.DeleteSession))
 	mux.HandleFunc("POST /oauth/response/", wa.PostOauthResponse)
+	mux.HandleFunc("GET /user", wa.withSessionRequired(wa.withAccountDetails(wa.GetUserDetails)))
 	mux.HandleFunc("GET /healthz", wa.HealthStatus)
 	mux.HandleFunc("GET /", wa.withAccountDetails(wa.GetHome))
 
@@ -296,6 +297,29 @@ func (wa *Webapp) buildTemplates(parent string) error {
 	}
 
 	return nil
+}
+
+// GetUserDetails fetches the latest information about the currently logged in user
+func (wa *Webapp) GetUserDetails(w http.ResponseWriter, r *http.Request) {
+	var quota, email string
+	if q, ok := r.Context().Value(quotaContextName).(string); ok {
+		quota = q
+	}
+	if e, ok := r.Context().Value(emailContextName).(string); ok {
+		email = e
+	}
+
+	data := struct {
+		Email string `json:"email"`
+		Quota string `json:"quota"`
+	}{
+		Email: email,
+		Quota: quota,
+	}
+
+	out, _ := json.Marshal(data)
+	w.Header().Add("Content-Type", "application/json")
+	fmt.Fprint(w, string(out))
 }
 
 // GetHome implements home route "GET /" for the web app, serving the home page

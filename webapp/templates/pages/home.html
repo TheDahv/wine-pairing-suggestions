@@ -4,6 +4,11 @@
 
 <script>
     document.addEventListener('alpine:init', () => {
+        Alpine.store('user', {
+            email: '{{.Email}}',
+            quota: Number.isNaN(parseInt('{{.Quota}}', 10)) ? null : parseInt('{{.Quota}}', 10),
+        });
+
         Alpine.store('recipe', {
             summaryState: 'NOT_STARTED',
             suggestionsState: 'NOT_STARTED',
@@ -63,6 +68,7 @@
                     if (result.status < 200 || result.status >= 400) {
                         throw new Error(parsed.message)
                     }
+
                     this.suggestions = parsed;
                     this.suggestionsState = 'SUCCESS';
                 } catch (error) {
@@ -70,6 +76,25 @@
                     this.suggestionsState = 'ERROR';
                     const errorParts = error.toString().split(':');
                     this.suggestionsError = errorParts[errorParts.length - 1];
+                }
+
+                // Update user's current quota
+                try {
+                    const result = await fetch(`/user`, {
+                        method: 'GET',
+                        headers: {
+                            'Accept': 'application/json'
+                        }
+                    });
+                    const parsed = await result.json();
+                    if (result.status < 200 || result.status >= 400) {
+                        throw new Error(parsed.message)
+                    }
+
+                    Alpine.store('user').quota = parsed.quota;
+                } catch (error) {
+                    // Eat the error. The user gets the latest on refresh
+                    console.log({ message: 'error updating quota', error })
                 }
             }
         });
@@ -104,7 +129,7 @@
         <div class="column is-two-fifths is-size-7 has-text-right-desktop">
             {{if .Email}}
             <p>Logged in as {{.Email}}</p>
-            <p>({{.Quota}} Suggestions Left)</p>
+            <p>(<span x-data x-text="$store.user.quota"></span> Suggestions Left)</p>
             <p><a href="/logout">Logout</a></p>
             {{end}}
         </div>
@@ -126,9 +151,9 @@
                 <input name="url" type="text" x-model="$store.recipe.url">
             </label>
         </p>
-        <p class="block" x-data="{ quota: {{.Quota}} }">
+        <p class="block" x-data>
             <input type="submit" class="button is-primary" value="Get Suggestions"
-                x-bind:disabled="!($store.recipe.url && {{.Quota}})" />
+                x-bind:disabled="!($store.recipe.url && $store.user.quota)" />
         </p>
         <div class="block" x-init="$store.previousrecipes.fetch()" x-data>
             <div x-show="$store.previousrecipes.state == 'SUCCESS'">
