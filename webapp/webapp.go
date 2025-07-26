@@ -133,10 +133,9 @@ func (wa *Webapp) Start() error {
 	mux.HandleFunc("GET /recipes/suggestions/recent", wa.withSessionRequired(wa.GetRecentSuggestions))
 	mux.HandleFunc("GET /recipes/suggestions/{url}", wa.withSessionRequired(wa.withSufficientQuota(wa.GetRecipeWineSuggestions)))
 	mux.HandleFunc("GET /logout", wa.withSessionRequired(wa.DeleteSession))
-	mux.HandleFunc("GET /login", wa.GetLogin)
 	mux.HandleFunc("POST /oauth/response/", wa.PostOauthResponse)
 	mux.HandleFunc("GET /healthz", wa.HealthStatus)
-	mux.HandleFunc("GET /", wa.withRedirectForLogin(wa.withAccountDetails(wa.GetHome)))
+	mux.HandleFunc("GET /", wa.withAccountDetails(wa.GetHome))
 
 	fmt.Printf("listening on :%d\n", wa.port)
 	return http.ListenAndServe(fmt.Sprintf(":%d", wa.port), mux)
@@ -195,27 +194,16 @@ func (wa *Webapp) withSessionRequired(next http.HandlerFunc) http.HandlerFunc {
 	})
 }
 
-func (wa *Webapp) withRedirectForLogin(next http.HandlerFunc) http.HandlerFunc {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		accountId := r.Context().Value(sessionContextName)
-		if accountId == "" {
-			http.Redirect(w, r, "/login", http.StatusSeeOther)
-			return
-		}
-
-		next.ServeHTTP(w, r)
-	})
-}
-
 func (wa *Webapp) withAccountDetails(next http.HandlerFunc) http.HandlerFunc {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		cookie, err := r.Cookie(sessionCookieName)
 		if err == http.ErrNoCookie {
-			http.Redirect(w, r, "/login", http.StatusSeeOther)
+			// There is no account to load, so we'll move on without account information loaded
+			next(w, r)
 			return
 		}
-		accountID := cookie.Value
 
+		accountID := cookie.Value
 		quota, err := wa.cache.Get(fmt.Sprintf("quotas:%s", accountID), func() (string, error) {
 			return "", fmt.Errorf("expected quota in quotas cache")
 		})
@@ -316,27 +304,24 @@ func (wa *Webapp) GetHome(w http.ResponseWriter, r *http.Request) {
 	var quota, email string
 	if q, ok := r.Context().Value(quotaContextName).(string); ok {
 		quota = q
-	} else {
-		w.WriteHeader(http.StatusInternalServerError)
-		fmt.Fprintf(w, "quota not loaded in context")
-		return
 	}
 	if e, ok := r.Context().Value(emailContextName).(string); ok {
 		email = e
-	} else {
-		w.WriteHeader(http.StatusInternalServerError)
-		fmt.Fprintf(w, "email not loaded in context")
-		return
 	}
 
 	data := struct {
-		Email string
-		Quota string
+		Email          string
+		Quota          string
+		GoogleClientID string
+		Hostname       string
 	}{
-		Email: email,
-		Quota: quota,
+		Email:          email,
+		Quota:          quota,
+		GoogleClientID: wa.googleClientID,
+		Hostname:       wa.hostname,
 	}
 
+	// The template will render an inline login screen if there isn't an active session
 	t := wa.tmpl.Lookup("pages/home.html")
 	if t == nil {
 		// Set a 500 status on the response
@@ -345,7 +330,7 @@ func (wa *Webapp) GetHome(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := wa.tmpl.Lookup("pages/home.html").Execute(w, data); err != nil {
+	if err := t.Execute(w, data); err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		fmt.Fprintf(w, "unable to render template: %v", err)
 	}
@@ -521,20 +506,6 @@ func (wa *Webapp) GetRecentSuggestions(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprint(w, string(out))
 }
 
-func (wa *Webapp) GetLogin(w http.ResponseWriter, r *http.Request) {
-	context := struct {
-		GoogleClientID string
-		Hostname       string
-	}{
-		GoogleClientID: wa.googleClientID,
-		Hostname:       wa.hostname,
-	}
-	if err := wa.tmpl.Lookup("pages/login.html").Execute(w, context); err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		fmt.Fprintf(w, "unable to render login page")
-	}
-}
-
 func (wa *Webapp) DeleteSession(w http.ResponseWriter, r *http.Request) {
 	accountID := r.Context().Value(sessionContextName)
 	if err := wa.cache.Delete(fmt.Sprintf("sessions:%s", accountID)); err != nil {
@@ -543,7 +514,7 @@ func (wa *Webapp) DeleteSession(w http.ResponseWriter, r *http.Request) {
 	}
 
 	wa.deleteCookie(sessionCookieName, w)
-	http.Redirect(w, r, "/login", http.StatusFound)
+	http.Redirect(w, r, "/", http.StatusFound)
 }
 
 func (wa *Webapp) PostOauthResponse(w http.ResponseWriter, r *http.Request) {
