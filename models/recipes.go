@@ -11,11 +11,10 @@ import (
 // Suggestion models a wine pairing recommendation from an LLM prompt response
 // encoded in JSON format.
 type Suggestion struct {
-	Style        string `json:"style"`
-	Region       string `json:"region"`
-	VintageRange string `json:"vintageRange"`
-	Description  string `json:"description"`
-	PairingNote  string `json:"pairingNote"`
+	Style       string `json:"style"`
+	Region      string `json:"region"`
+	Description string `json:"description"`
+	PairingNote string `json:"pairingNote"`
 }
 
 // SummarizeRecipe takes a markdown representation of a recipe published on the

@@ -154,7 +154,7 @@
     <div x-show="$store.recipe.suggestionsState == 'SUCCESS'">
         <template x-for="suggestion in $store.recipe.suggestions">
             <div class="box">
-                <h3 class="title is-4" x-text="`${suggestion.vintageRange} ${suggestion.style} - ${suggestion.region}`">
+                <h3 class="title is-4" x-text="`${suggestion.style} - ${suggestion.region}`">
                 </h3>
                 <p x-text="suggestion.description"></p>
                 <p x-text="suggestion.pairingNote"></p>
