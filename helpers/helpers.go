@@ -109,3 +109,18 @@ func GetGoogleJWTToken(algorithm string) (*rsa.PublicKey, error) {
 
 	return key, fmt.Errorf("algorithm '%s' was not in certificates response", algorithm)
 }
+
+// ServerErrror models server error responses
+type ServerError struct {
+	Message string `json:"message"`
+}
+
+// SendJSONError sends the error message as a JSON-encoded server error response
+func SendJSONError(w http.ResponseWriter, err error, status int) {
+	w.WriteHeader(status)
+	w.Header().Set("Content-Type", "application/json")
+	out, _ := json.Marshal(ServerError{
+		Message: err.Error(),
+	})
+	fmt.Fprint(w, string(out))
+}

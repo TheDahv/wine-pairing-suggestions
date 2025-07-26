@@ -344,8 +344,7 @@ func (wa *Webapp) PostCreateRecipe(w http.ResponseWriter, r *http.Request) {
 	fmt.Println("Handling PostCreateRecipe")
 	u := r.PathValue("url")
 	if u == "" {
-		w.WriteHeader(http.StatusBadRequest)
-		fmt.Fprintf(w, "URL required")
+		helpers.SendJSONError(w, fmt.Errorf("URL required"), http.StatusBadRequest)
 		return
 	}
 
@@ -369,8 +368,7 @@ func (wa *Webapp) PostCreateRecipe(w http.ResponseWriter, r *http.Request) {
 		return string(contents), nil
 	})
 	if err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		fmt.Fprintf(w, "unable to fetch raw: %v", err)
+		helpers.SendJSONError(w, fmt.Errorf("unable to fetch raw: %v", err), http.StatusBadRequest)
 		return
 	}
 
@@ -378,25 +376,36 @@ func (wa *Webapp) PostCreateRecipe(w http.ResponseWriter, r *http.Request) {
 		return helpers.CreateMarkdownFromRaw(u, raw)
 	})
 	if err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		fmt.Fprintf(w, "unable to get content from page: %v", err)
+		helpers.SendJSONError(w, fmt.Errorf("unable to get content from page: %v", err), http.StatusInternalServerError)
 		return
 	}
 
 	// TODO Provide a way for the LLM to indicate it couldn't summarize the recipe
 	model, err := models.MakeBedrockModel(ctx)
 	if err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		fmt.Fprintf(w, "unable to initialize model: %v", err)
+		helpers.SendJSONError(w, fmt.Errorf("unable to initialize model: %v", err), http.StatusInternalServerError)
 		return
 	}
 
 	summary, err := wa.cache.Get(fmt.Sprintf("recipes:summarized:%s", u), func() (string, error) {
-		return models.SummarizeRecipe(ctx, model, md)
+		out, err := models.SummarizeRecipe(ctx, model, md)
+		if err != nil {
+			return "", fmt.Errorf("unable to get summary prompt response: %v", err)
+		}
+
+		parsed, err := models.ParseSummary(out)
+		if err != nil {
+			return "", fmt.Errorf("unable to parse summary prompt response: %v", err)
+		}
+
+		if !parsed.Ok {
+			return "", fmt.Errorf("model aborted recipe summary: %s", parsed.AbortReason)
+		}
+
+		return parsed.Summary, nil
 	})
 	if err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		fmt.Fprintf(w, "unable to summarize recipe contents: %v", err)
+		helpers.SendJSONError(w, fmt.Errorf("unable to summarize recipe contents: %v", err), http.StatusInternalServerError)
 		return
 	}
 
@@ -406,12 +415,12 @@ func (wa *Webapp) PostCreateRecipe(w http.ResponseWriter, r *http.Request) {
 		Summary: summary,
 	}
 
-	w.Header().Add("Content-Type", "application/json")
 	out, err := json.Marshal(tmp)
 	if err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		fmt.Fprintf(w, "{ \"error\": \"unable to render summary JSON: %v\"", err)
+		helpers.SendJSONError(w, fmt.Errorf("unable to render summary JSON: %v", err), http.StatusInternalServerError)
+		return
 	}
+	w.Header().Add("Content-Type", "application/json")
 	fmt.Fprint(w, string(out))
 }
 
@@ -426,8 +435,7 @@ func (wa *Webapp) GetRecipeWineSuggestions(w http.ResponseWriter, r *http.Reques
 
 	u := r.PathValue("url")
 	if u == "" {
-		w.WriteHeader(http.StatusBadRequest)
-		fmt.Fprintf(w, "URL required")
+		helpers.SendJSONError(w, fmt.Errorf("URL required"), http.StatusBadRequest)
 		return
 	}
 
@@ -435,15 +443,13 @@ func (wa *Webapp) GetRecipeWineSuggestions(w http.ResponseWriter, r *http.Reques
 		return "", fmt.Errorf("expected a summary to be generated before this call")
 	})
 	if err != nil {
-		w.WriteHeader(http.StatusBadRequest)
-		fmt.Fprintf(w, "unable to load summary: %v", err)
+		helpers.SendJSONError(w, fmt.Errorf("unable to load summary: %v", err), http.StatusInternalServerError)
 		return
 	}
 
 	model, err := models.MakeBedrockModel(ctx)
 	if err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		fmt.Fprintf(w, "unable to initialize model: %v", err)
+		helpers.SendJSONError(w, fmt.Errorf("unable to initialize model: %v", err), http.StatusInternalServerError)
 		return
 	}
 
@@ -460,8 +466,7 @@ func (wa *Webapp) GetRecipeWineSuggestions(w http.ResponseWriter, r *http.Reques
 	})
 
 	if err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		fmt.Fprintf(w, "unable to get wine suggestions from the model: %v", err)
+		helpers.SendJSONError(w, fmt.Errorf("unable to get wine suggestions from the model: %v", err), http.StatusInternalServerError)
 		return
 	}
 
@@ -475,8 +480,7 @@ func (wa *Webapp) GetRecipeWineSuggestions(w http.ResponseWriter, r *http.Reques
 func (wa *Webapp) GetRecentSuggestions(w http.ResponseWriter, r *http.Request) {
 	keys, err := wa.cache.GetKeys("recipes:suggestions-json:*")
 	if err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		fmt.Fprintf(w, "unable to scan keys: %v", err)
+		helpers.SendJSONError(w, fmt.Errorf("unable to scan for previous recipes: %v", err), http.StatusInternalServerError)
 		return
 	}
 
@@ -498,8 +502,7 @@ func (wa *Webapp) GetRecentSuggestions(w http.ResponseWriter, r *http.Request) {
 
 	out, err := json.Marshal(urls[0:count])
 	if err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		fmt.Fprintf(w, "unable to encode URL suggestions: %v", err)
+		helpers.SendJSONError(w, fmt.Errorf("unable to encode URL suggestions: %v", err), http.StatusInternalServerError)
 		return
 	}
 	w.Header().Add("Content-Type", "application/json")
@@ -509,8 +512,7 @@ func (wa *Webapp) GetRecentSuggestions(w http.ResponseWriter, r *http.Request) {
 func (wa *Webapp) DeleteSession(w http.ResponseWriter, r *http.Request) {
 	accountID := r.Context().Value(sessionContextName)
 	if err := wa.cache.Delete(fmt.Sprintf("sessions:%s", accountID)); err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		fmt.Fprintf(w, "unable to destroy session: %v", err)
+		helpers.SendJSONError(w, fmt.Errorf("unable to destroy session: %v", err), http.StatusInternalServerError)
 	}
 
 	wa.deleteCookie(sessionCookieName, w)
@@ -519,8 +521,7 @@ func (wa *Webapp) DeleteSession(w http.ResponseWriter, r *http.Request) {
 
 func (wa *Webapp) PostOauthResponse(w http.ResponseWriter, r *http.Request) {
 	if err := r.ParseForm(); err != nil {
-		w.WriteHeader(http.StatusBadRequest)
-		fmt.Fprintf(w, "unable to parse request form: %v", err)
+		helpers.SendJSONError(w, fmt.Errorf("unable to parse request form: %v", err), http.StatusBadRequest)
 		return
 	}
 
@@ -528,26 +529,22 @@ func (wa *Webapp) PostOauthResponse(w http.ResponseWriter, r *http.Request) {
 	csrfCookie, err := wa.getCookie("g_csrf_token", r)
 
 	if err == http.ErrNoCookie {
-		w.WriteHeader(http.StatusBadRequest)
-		fmt.Fprint(w, "no csrf cookie set")
+		helpers.SendJSONError(w, fmt.Errorf("no csrf cookie set"), http.StatusBadRequest)
 		return
 	}
 	if err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		fmt.Fprintf(w, "unable to get csrf cookie: %v", err)
+		helpers.SendJSONError(w, fmt.Errorf("unable to get csrf cookie: %v", err), http.StatusInternalServerError)
 		return
 	}
 	if csrfToken != csrfCookie.Value {
-		w.WriteHeader(http.StatusBadRequest)
-		fmt.Fprint(w, "failed to verify double submit cookie")
+		helpers.SendJSONError(w, fmt.Errorf("failed to verify double submit cookie"), http.StatusBadRequest)
 		return
 	}
 
 	expectedMethod := "RS256"
 	secret, err := helpers.GetGoogleJWTToken(expectedMethod)
 	if err != nil {
-		w.WriteHeader(http.StatusBadRequest)
-		fmt.Fprintf(w, "unable to fetch latest Google certs: %v", err)
+		helpers.SendJSONError(w, fmt.Errorf("unable to fetch latest Google certs: %v", err), http.StatusBadRequest)
 		return
 	}
 
@@ -562,8 +559,7 @@ func (wa *Webapp) PostOauthResponse(w http.ResponseWriter, r *http.Request) {
 
 	claims, ok := parsed.Claims.(*helpers.Claims)
 	if !ok {
-		w.WriteHeader(http.StatusInternalServerError)
-		fmt.Fprintf(w, "unable to parse response as Google JWT")
+		helpers.SendJSONError(w, fmt.Errorf("unable to parse response as Google JWT"), http.StatusInternalServerError)
 	}
 
 	wa.cache.Set(fmt.Sprintf("accounts:%s", claims.AccountID), claims.Email)

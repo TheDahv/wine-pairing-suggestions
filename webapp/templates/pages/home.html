@@ -9,12 +9,16 @@
             suggestionsState: 'NOT_STARTED',
             url: '',
             summary: '',
+            summaryError: '',
             suggestions: [],
+            suggestionsError: '',
             reset() {
                 this.summaryState = 'NOT_STARTED';
                 this.suggestionsState = 'NOT_STARTED';
-                summary: '';
-                suggestions: [];
+                this.summaryError = '';
+                this.suggestionsError = '';
+                this.summary = '';
+                this.suggestions = [];
             },
             async fetch() {
                 const url = this.url;
@@ -32,11 +36,16 @@
                         }
                     });
                     const parsed = await result.json();
+                    if (result.status < 200 || result.status >= 400) {
+                        throw new Error(parsed.message);
+                    }
                     this.summary = parsed.summary;
                     this.summaryState = 'SUCCESS';
                 } catch (error) {
-                    this.summaryState = 'ERROR';
                     console.error({ log: 'failed to fetch', error });
+                    this.summaryState = 'ERROR';
+                    const errorParts = error.toString().split(':');
+                    this.summaryError = errorParts[errorParts.length - 1];
 
                     // Stop processing here.
                     return;
@@ -51,11 +60,16 @@
                         }
                     });
                     const parsed = await result.json();
+                    if (result.status < 200 || result.status >= 400) {
+                        throw new Error(parsed.message)
+                    }
                     this.suggestions = parsed;
                     this.suggestionsState = 'SUCCESS';
                 } catch (error) {
-                    this.suggestionsState = 'ERROR';
                     console.error({ log: 'failed to fetch', error });
+                    this.suggestionsState = 'ERROR';
+                    const errorParts = error.toString().split(':');
+                    this.suggestionsError = errorParts[errorParts.length - 1];
                 }
             }
         });
@@ -83,7 +97,6 @@
 </script>
 
 <section class="section">
-
     <div class="columns">
         <div class="column">
             <h1 class="title is-1">Wine Pairing Suggestions</h1>
@@ -144,9 +157,16 @@
     <div class="box" x-show="$store.recipe.summaryState == 'SUCCESS'">
         <p class="content" x-text="$store.recipe.summary"></p>
     </div>
+    <article class="message is-danger" x-show="$store.recipe.summaryState == 'ERROR'">
+        <div class="message-header">
+            <p>Something broke!</p>
+        </div>
+        <div class="message-body" x-text="$store.recipe.summaryError"></div>
+    </article>
 </section>
 
-<section class="section" id="suggestions" x-data x-show="$store.recipe.suggestionsState != 'NOT_STARTED'">
+<section class="section" id="suggestions" x-data
+    x-show="$store.recipe.summaryState != 'ERROR' && $store.recipe.suggestionsState != 'NOT_STARTED'">
     <h2 class="title is-2">Pairing Suggestions</h2>
     <p x-show="$store.recipe.suggestionsState == 'FETCHING'">
         <progress class=" progress is-small is-primary" max="100">Loading...</progress>
@@ -161,6 +181,12 @@
             </div>
         </template>
     </div>
+    <article class="message is-danger" x-show="$store.recipe.suggestionsState == 'ERROR'">
+        <div class="message-header">
+            <p>Something broke!</p>
+        </div>
+        <div class="message-body" x-text="$store.recipe.suggestionsError"></div>
+    </article>
 </section>
 {{else}}
 <section class="section">
