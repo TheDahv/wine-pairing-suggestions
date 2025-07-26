@@ -4,8 +4,359 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Inter+Tight:ital,wght@0,100..900;1,100..900&family=Playfair+Display:ital,wght@0,400..900;1,400..900&display=swap"
+        rel="stylesheet">
     <style>
         @import "https://cdn.jsdelivr.net/npm/bulma@1.0.4/css/bulma.min.css";
+    </style>
+    <style>
+        :root {
+            /* Base Scheme Colors - Using warm gray (greige) as base */
+            --bulma-scheme-h: 30;
+            --bulma-scheme-s: 8%;
+            --bulma-light-l: 95%;
+            --bulma-light-invert-l: 17%;
+            --bulma-dark-l: 17%;
+            --bulma-dark-invert-l: 95%;
+            --bulma-soft-l: 93%;
+            --bulma-bold-l: 17%;
+            --bulma-soft-invert-l: 17%;
+            --bulma-bold-invert-l: 93%;
+
+            /* Primary Color - Deep Burgundy (#722F37) */
+            --bulma-primary: hsla(var(--bulma-primary-h), var(--bulma-primary-s), var(--bulma-primary-l), 1);
+            --bulma-primary-base: hsla(var(--bulma-primary-h), var(--bulma-primary-s), var(--bulma-primary-l), 1);
+            --bulma-primary-rgb: 114, 47, 55;
+            --bulma-primary-h: 353deg;
+            --bulma-primary-s: 42%;
+            --bulma-primary-l: 32%;
+            --bulma-primary-00-l: 2%;
+            --bulma-primary-05-l: 7%;
+            --bulma-primary-10-l: 12%;
+            --bulma-primary-15-l: 17%;
+            --bulma-primary-20-l: 22%;
+            --bulma-primary-25-l: 27%;
+            --bulma-primary-30-l: 32%;
+            --bulma-primary-35-l: 37%;
+            --bulma-primary-40-l: 42%;
+            --bulma-primary-45-l: 47%;
+            --bulma-primary-50-l: 52%;
+            --bulma-primary-55-l: 57%;
+            --bulma-primary-60-l: 62%;
+            --bulma-primary-65-l: 67%;
+            --bulma-primary-70-l: 72%;
+            --bulma-primary-75-l: 77%;
+            --bulma-primary-80-l: 82%;
+            --bulma-primary-85-l: 87%;
+            --bulma-primary-90-l: 92%;
+            --bulma-primary-95-l: 97%;
+            --bulma-primary-100-l: 100%;
+
+            /* Secondary Colors */
+
+            /* Success - Sage Green (#9CAF88) */
+            --bulma-success: hsla(var(--bulma-success-h), var(--bulma-success-s), var(--bulma-success-l), 1);
+            --bulma-success-base: hsla(var(--bulma-success-h), var(--bulma-success-s), var(--bulma-success-l), 1);
+            --bulma-success-rgb: 156, 175, 136;
+            --bulma-success-h: 89deg;
+            --bulma-success-s: 21%;
+            --bulma-success-l: 61%;
+            --bulma-success-00-l: 4%;
+            --bulma-success-05-l: 9%;
+            --bulma-success-10-l: 14%;
+            --bulma-success-15-l: 19%;
+            --bulma-success-20-l: 24%;
+            --bulma-success-25-l: 29%;
+            --bulma-success-30-l: 34%;
+            --bulma-success-35-l: 39%;
+            --bulma-success-40-l: 44%;
+            --bulma-success-45-l: 49%;
+            --bulma-success-50-l: 54%;
+            --bulma-success-55-l: 59%;
+            --bulma-success-60-l: 61%;
+            --bulma-success-65-l: 66%;
+            --bulma-success-70-l: 71%;
+            --bulma-success-75-l: 76%;
+            --bulma-success-80-l: 81%;
+            --bulma-success-85-l: 86%;
+            --bulma-success-90-l: 91%;
+            --bulma-success-95-l: 96%;
+            --bulma-success-100-l: 100%;
+
+            /* Warning - Golden Honey (#D4A574) */
+            --bulma-warning: hsla(var(--bulma-warning-h), var(--bulma-warning-s), var(--bulma-warning-l), 1);
+            --bulma-warning-base: hsla(var(--bulma-warning-h), var(--bulma-warning-s), var(--bulma-warning-l), 1);
+            --bulma-warning-rgb: 212, 165, 116;
+            --bulma-warning-h: 31deg;
+            --bulma-warning-s: 52%;
+            --bulma-warning-l: 64%;
+            --bulma-warning-00-l: 4%;
+            --bulma-warning-05-l: 9%;
+            --bulma-warning-10-l: 14%;
+            --bulma-warning-15-l: 19%;
+            --bulma-warning-20-l: 24%;
+            --bulma-warning-25-l: 29%;
+            --bulma-warning-30-l: 34%;
+            --bulma-warning-35-l: 39%;
+            --bulma-warning-40-l: 44%;
+            --bulma-warning-45-l: 49%;
+            --bulma-warning-50-l: 54%;
+            --bulma-warning-55-l: 59%;
+            --bulma-warning-60-l: 64%;
+            --bulma-warning-65-l: 69%;
+            --bulma-warning-70-l: 74%;
+            --bulma-warning-75-l: 79%;
+            --bulma-warning-80-l: 84%;
+            --bulma-warning-85-l: 89%;
+            --bulma-warning-90-l: 94%;
+            --bulma-warning-95-l: 97%;
+            --bulma-warning-100-l: 100%;
+
+            /* Info - Slate Blue (#6B7AA0) */
+            --bulma-info: hsla(var(--bulma-info-h), var(--bulma-info-s), var(--bulma-info-l), 1);
+            --bulma-info-base: hsla(var(--bulma-info-h), var(--bulma-info-s), var(--bulma-info-l), 1);
+            --bulma-info-rgb: 107, 122, 160;
+            --bulma-info-h: 223deg;
+            --bulma-info-s: 24%;
+            --bulma-info-l: 52%;
+            --bulma-info-00-l: 3%;
+            --bulma-info-05-l: 8%;
+            --bulma-info-10-l: 13%;
+            --bulma-info-15-l: 18%;
+            --bulma-info-20-l: 23%;
+            --bulma-info-25-l: 28%;
+            --bulma-info-30-l: 33%;
+            --bulma-info-35-l: 38%;
+            --bulma-info-40-l: 43%;
+            --bulma-info-45-l: 48%;
+            --bulma-info-50-l: 52%;
+            --bulma-info-55-l: 57%;
+            --bulma-info-60-l: 62%;
+            --bulma-info-65-l: 67%;
+            --bulma-info-70-l: 72%;
+            --bulma-info-75-l: 77%;
+            --bulma-info-80-l: 82%;
+            --bulma-info-85-l: 87%;
+            --bulma-info-90-l: 92%;
+            --bulma-info-95-l: 97%;
+            --bulma-info-100-l: 100%;
+
+            /* Danger - Keep default red but tone it down to match palette */
+            --bulma-danger: hsla(var(--bulma-danger-h), var(--bulma-danger-s), var(--bulma-danger-l), 1);
+            --bulma-danger-base: hsla(var(--bulma-danger-h), var(--bulma-danger-s), var(--bulma-danger-l), 1);
+            --bulma-danger-rgb: 156, 66, 72;
+            --bulma-danger-h: 356deg;
+            --bulma-danger-s: 40%;
+            --bulma-danger-l: 44%;
+            --bulma-danger-00-l: 3%;
+            --bulma-danger-05-l: 8%;
+            --bulma-danger-10-l: 13%;
+            --bulma-danger-15-l: 18%;
+            --bulma-danger-20-l: 23%;
+            --bulma-danger-25-l: 28%;
+            --bulma-danger-30-l: 33%;
+            --bulma-danger-35-l: 38%;
+            --bulma-danger-40-l: 44%;
+            --bulma-danger-45-l: 49%;
+            --bulma-danger-50-l: 54%;
+            --bulma-danger-55-l: 59%;
+            --bulma-danger-60-l: 64%;
+            --bulma-danger-65-l: 69%;
+            --bulma-danger-70-l: 74%;
+            --bulma-danger-75-l: 79%;
+            --bulma-danger-80-l: 84%;
+            --bulma-danger-85-l: 89%;
+            --bulma-danger-90-l: 94%;
+            --bulma-danger-95-l: 97%;
+            --bulma-danger-100-l: 100%;
+
+            /* Typography - Updated to include Playfair Display */
+            --bulma-family-primary: "Inter", SF Pro, Segoe UI, Roboto, Oxygen, Ubuntu, Helvetica Neue, Helvetica, Arial, sans-serif;
+            --bulma-family-secondary: "Playfair Display", Georgia, Cambria, "Times New Roman", Times, serif;
+            --bulma-family-code: "Inconsolata", Hack, SF Mono, Roboto Mono, Source Code Pro, Ubuntu Mono, monospace;
+
+            /* Font Sizes - Following 8px base scale */
+            --bulma-size-small: 0.875rem;
+            /* 14px */
+            --bulma-size-normal: 1rem;
+            /* 16px */
+            --bulma-size-medium: 1.25rem;
+            /* 20px */
+            --bulma-size-large: 1.5rem;
+            /* 24px */
+            --bulma-size-1: 3rem;
+            /* 48px - H1 */
+            --bulma-size-2: 2.25rem;
+            /* 36px - H2 */
+            --bulma-size-3: 1.5rem;
+            /* 24px - H3 */
+            --bulma-size-4: 1.25rem;
+            /* 20px - H4 */
+            --bulma-size-5: 1rem;
+            /* 16px - H5 */
+            --bulma-size-6: 0.875rem;
+            /* 14px - H6 */
+            --bulma-size-7: 0.75rem;
+            /* 12px - Small */
+
+            /* Border Radius - Consistent with style guide */
+            --bulma-radius-small: 0.375rem;
+            /* 6px */
+            --bulma-radius: 0.75rem;
+            /* 12px - Main radius */
+            --bulma-radius-large: 1rem;
+            /* 16px */
+            --bulma-radius-rounded: 1.5rem;
+            /* 24px */
+
+            /* Custom Variables for Wine App */
+            --wine-greige: hsla(30, 8%, 95%, 1);
+            /* #F4F3F1 - New warm gray base */
+            --wine-charcoal: hsla(0, 0%, 17%, 1);
+            /* #2C2C2C */
+            --wine-sage: hsla(89, 21%, 61%, 1);
+            /* #9CAF88 */
+            --wine-honey: hsla(31, 52%, 64%, 1);
+            /* #D4A574 */
+            --wine-slate: hsla(223, 24%, 52%, 1);
+            /* #6B7AA0 */
+            --wine-light-gray: hsla(30, 8%, 97%, 1);
+            /* #F7F6F5 - Lighter warm gray */
+            --wine-medium-gray: hsla(0, 0%, 54%, 1);
+            /* #8A8A8A */
+            --wine-border-gray: hsla(30, 8%, 88%, 1);
+            /* #E3E2E0 - Warm border gray */
+
+            /* Shadows - Subtle and elegant */
+            --bulma-shadow: 0 0.125rem 0.5rem hsla(0, 0%, 0%, 0.08);
+            --bulma-shadow-large: 0 0.25rem 1rem hsla(0, 0%, 0%, 0.12);
+
+            /* Background Colors */
+            --bulma-scheme-main: var(--wine-greige);
+            --bulma-scheme-main-bis: hsla(30, 8%, 93%, 1);
+            --bulma-scheme-main-ter: hsla(30, 8%, 91%, 1);
+            --bulma-background: var(--wine-greige);
+
+            /* Text Colors */
+            --bulma-text: var(--wine-charcoal);
+            --bulma-text-weak: var(--wine-medium-gray);
+            --bulma-text-strong: hsla(0, 0%, 10%, 1);
+
+            /* Border Colors */
+            --bulma-border: var(--wine-border-gray);
+            --bulma-border-weak: hsla(0, 0%, 92%, 1);
+            --bulma-border-strong: hsla(0, 0%, 80%, 1);
+
+            /* Link Colors - Comprehensive styling */
+            --bulma-link: var(--bulma-primary);
+            --bulma-link-hover: hsla(353, 42%, 28%, 1);
+            --bulma-link-active: hsla(353, 42%, 24%, 1);
+            --bulma-link-focus: var(--wine-sage);
+            --bulma-link-visited: hsla(353, 35%, 40%, 1);
+
+            /* Link text decoration */
+            --bulma-link-text-decoration: none;
+            --bulma-link-hover-text-decoration: underline;
+            --bulma-link-focus-text-decoration: underline;
+
+            /* Link underline styling */
+            --bulma-link-underline-color: hsla(353, 42%, 32%, 0.3);
+            --bulma-link-hover-underline-color: hsla(353, 42%, 28%, 0.6);
+
+            /* Subtle link styling for body text */
+            --bulma-content-link-color: var(--wine-sage);
+            --bulma-content-link-hover-color: hsla(89, 21%, 55%, 1);
+            --bulma-content-link-active-color: hsla(89, 21%, 50%, 1);
+
+            /* Focus Colors */
+            --bulma-focus: var(--wine-sage);
+            --bulma-focus-h: 89deg;
+            --bulma-focus-s: 21%;
+            --bulma-focus-l: 61%;
+
+            /* Navbar specific */
+            --bulma-navbar-background-color: var(--wine-greige);
+            --bulma-navbar-item-color: var(--wine-charcoal);
+            --bulma-navbar-item-hover-color: var(--bulma-primary);
+            --bulma-navbar-item-hover-background-color: hsla(30, 8%, 92%, 1);
+
+            /* Card specific */
+            --bulma-card-background-color: var(--wine-greige);
+            --bulma-card-shadow: var(--bulma-shadow);
+            --bulma-card-radius: var(--bulma-radius);
+
+            /* Box specific - White background for better contrast */
+            --bulma-box-background-color: hsl(0, 0%, 100%);
+            --bulma-box-shadow: 0 0.125rem 0.5rem hsla(0, 0%, 0%, 0.08);
+            --bulma-box-radius: var(--bulma-radius);
+
+            /* Title elements use Playfair Display font */
+            --bulma-title-family: var(--bulma-family-secondary);
+            --bulma-title-color: var(--wine-charcoal);
+            --bulma-title-weight: 500;
+
+            /* Button specific */
+            --bulma-button-border-radius: 0.5rem;
+            /* 8px for buttons */
+
+            /* Primary Button Colors */
+            --bulma-button-text-color: var(--wine-light-gray);
+            --bulma-button-text-color-invert: var(--wine-charcoal);
+
+            /* Primary button states */
+            --bulma-primary-invert: var(--wine-light-gray);
+            --bulma-primary-light: hsla(353, 42%, 95%, 1);
+            --bulma-primary-dark: hsla(353, 42%, 25%, 1);
+
+            /* Button hover/active states */
+            --bulma-button-hover-color: var(--wine-light-gray);
+            --bulma-button-focus-color: var(--wine-light-gray);
+            --bulma-button-active-color: var(--wine-light-gray);
+
+            /* Specific primary button text colors */
+            --bulma-primary-invert-l: 96%;
+            --bulma-primary-light-l: 95%;
+            --bulma-primary-dark-l: 25%;
+
+            /* Input specific */
+            --bulma-input-border-color: var(--wine-border-gray);
+            --bulma-input-focus-border-color: var(--wine-sage);
+            --bulma-input-focus-box-shadow-color: hsla(89, 21%, 61%, 0.25);
+        }
+    </style>
+    <style>
+        .title {
+            font-family: var(--bulma-family-secondary);
+        }
+
+        .box {
+            background-color: white;
+            box-shadow: var(--bulma-box-shadow);
+            border-radius: var(--bulma-radius);
+        }
+
+        a {
+            color: var(--bulma-link);
+        }
+
+        a:hover {
+            color: var(--bulma-link-hover);
+        }
+
+        a:active {
+            color: var(--bulma-link-active);
+        }
+
+        a:focus {
+            color: var(--bulma-link-focus);
+        }
+
+        a:visited {
+            color: var(--bulma-link-visited);
+        }
     </style>
     <title>Wine and Food Pairings</title>
 </head>

@@ -82,55 +82,58 @@
     });
 </script>
 
-<div class="columns">
-    <div class="column">
-        <h1 class="title is-1">Wine Pairing Suggestions</h1>
-    </div>
-    <div class="column is-two-fifths is-size-7 has-text-right-desktop">
-        {{if .Email}}
-        <p>Logged in as {{.Email}}</p>
-        <p>({{.Quota}} Suggestions Left)</p>
-        <p><a href="/logout">Logout</a></p>
-        {{end}}
-    </div>
-</div>
-<div class="block">
-    <p>
-        Are you planning a meal and you want to find the perfect wine to make it
-        pop? Have you ever been invited to dinner and didn't know what to bring
-        that would go well? Tell us about the meal and we'll suggest wines to
-        pair.
-    </p>
-</div>
+<section class="section">
 
-{{if .Email }}
-<form class="box" x-data @submit.prevent="$store.recipe.fetch()">
-    <p class="block">
-        <label for="url">
-            Let's add the URL for a recipe you want to pair.
-            <input name="url" type="text" x-model="$store.recipe.url">
-        </label>
-    </p>
-    <p class="block" x-data="{ quota: {{.Quota}} }">
-        <input type="submit" class="button is-primary" value="Get Suggestions"
-            x-bind:disabled="!($store.recipe.url && {{.Quota}})" />
-    </p>
-    <div class="block" x-init="$store.previousrecipes.fetch()" x-data>
-        <div x-show="$store.previousrecipes.state == 'SUCCESS'">
-            <strong>Try it out with a recently analyzed recipe:</strong>
-            <ul>
-                <template x-for="url in $store.previousrecipes.urls">
-                    <li>
-                        <a x-text="url" @click.prevent="$store.recipe.url = url">
-                    </li>
-                </template>
-            </ul>
+    <div class="columns">
+        <div class="column">
+            <h1 class="title is-1">Wine Pairing Suggestions</h1>
         </div>
-        <div x-show="$store.previousrecipes.state == 'FETCHING'">
-            <p><em>Loading websites with recent suggestions.</em></p>
+        <div class="column is-two-fifths is-size-7 has-text-right-desktop">
+            {{if .Email}}
+            <p>Logged in as {{.Email}}</p>
+            <p>({{.Quota}} Suggestions Left)</p>
+            <p><a href="/logout">Logout</a></p>
+            {{end}}
         </div>
     </div>
-</form>
+    <div class="block">
+        <p>
+            Are you planning a meal and you want to find the perfect wine to make it
+            pop? Have you ever been invited to dinner and didn't know what to bring
+            that would go well? Tell us about the meal and we'll suggest wines to
+            pair.
+        </p>
+    </div>
+
+    {{if .Email }}
+    <form class="box" x-data @submit.prevent="$store.recipe.fetch()">
+        <p class="block">
+            <label for="url">
+                Let's add the URL for a recipe you want to pair.
+                <input name="url" type="text" x-model="$store.recipe.url">
+            </label>
+        </p>
+        <p class="block" x-data="{ quota: {{.Quota}} }">
+            <input type="submit" class="button is-primary" value="Get Suggestions"
+                x-bind:disabled="!($store.recipe.url && {{.Quota}})" />
+        </p>
+        <div class="block" x-init="$store.previousrecipes.fetch()" x-data>
+            <div x-show="$store.previousrecipes.state == 'SUCCESS'">
+                <strong>Try it out with a recently analyzed recipe:</strong>
+                <ul>
+                    <template x-for="url in $store.previousrecipes.urls">
+                        <li>
+                            <a x-text="url" @click.prevent="$store.recipe.url = url">
+                        </li>
+                    </template>
+                </ul>
+            </div>
+            <div x-show="$store.previousrecipes.state == 'FETCHING'">
+                <p><em>Loading websites with recent suggestions.</em></p>
+            </div>
+        </div>
+    </form>
+</section>
 
 
 <section class="section" id="summary" x-data x-show="$store.recipe.summaryState != 'NOT_STARTED'">
@@ -151,9 +154,8 @@
     <div x-show="$store.recipe.suggestionsState == 'SUCCESS'">
         <template x-for="suggestion in $store.recipe.suggestions">
             <div class="box">
-                <p>
-                    <strong x-text="`${suggestion.vintageRange} ${suggestion.style} - ${suggestion.region}`"></strong>
-                </p>
+                <h3 class="title is-4" x-text="`${suggestion.vintageRange} ${suggestion.style} - ${suggestion.region}`">
+                </h3>
                 <p x-text="suggestion.description"></p>
                 <p x-text="suggestion.pairingNote"></p>
             </div>
