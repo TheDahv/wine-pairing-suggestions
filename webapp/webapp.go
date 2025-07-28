@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
+	"github.com/tmc/langchaingo/llms"
 
 	"github.com/thedahv/wine-pairing-suggestions/cache"
 	"github.com/thedahv/wine-pairing-suggestions/helpers"
@@ -53,6 +54,7 @@ type Webapp struct {
 	cache          cache.Cacher
 	googleClientID string
 	hostname       string
+	model          llms.Model
 }
 
 // Option configures the Webapp with various options
@@ -88,6 +90,15 @@ func WithGoogleClientID(id string) Option {
 func WithHostname(hostname string) Option {
 	return func(wa *Webapp) error {
 		wa.hostname = hostname
+		return nil
+	}
+}
+
+// WithModel sets the model for the webapp, allowing clients to decide which
+// model to use at startup.
+func WithModel(model llms.Model) Option {
+	return func(wa *Webapp) error {
+		wa.model = model
 		return nil
 	}
 }
@@ -404,15 +415,8 @@ func (wa *Webapp) PostCreateRecipe(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// TODO Provide a way for the LLM to indicate it couldn't summarize the recipe
-	model, err := models.MakeBedrockModel(ctx)
-	if err != nil {
-		helpers.SendJSONError(w, fmt.Errorf("unable to initialize model: %v", err), http.StatusInternalServerError)
-		return
-	}
-
 	summary, err := wa.cache.Get(fmt.Sprintf("recipes:summarized:%s", u), func() (string, error) {
-		out, err := models.SummarizeRecipe(ctx, model, md)
+		out, err := models.SummarizeRecipe(ctx, wa.model, md)
 		if err != nil {
 			return "", fmt.Errorf("unable to get summary prompt response: %v", err)
 		}
@@ -471,12 +475,6 @@ func (wa *Webapp) GetRecipeWineSuggestions(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	model, err := models.MakeBedrockModel(ctx)
-	if err != nil {
-		helpers.SendJSONError(w, fmt.Errorf("unable to initialize model: %v", err), http.StatusInternalServerError)
-		return
-	}
-
 	suggestions, err := wa.cache.Get(fmt.Sprintf("recipes:suggestions-json:%s", u), func() (string, error) {
 		// Only decrement quota if the user has a cache miss
 		accountID := r.Context().Value(sessionContextName)
@@ -486,7 +484,7 @@ func (wa *Webapp) GetRecipeWineSuggestions(w http.ResponseWriter, r *http.Reques
 			return "", fmt.Errorf("unexpected session context type")
 		}
 
-		return models.GeneratePairingSuggestions(ctx, model, summary)
+		return models.GeneratePairingSuggestions(ctx, wa.model, summary)
 	})
 
 	if err != nil {

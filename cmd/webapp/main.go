@@ -1,10 +1,12 @@
 package main
 
 import (
+	"context"
 	"log"
 	"os"
 	"strconv"
 
+	"github.com/thedahv/wine-pairing-suggestions/models"
 	"github.com/thedahv/wine-pairing-suggestions/webapp"
 )
 
@@ -25,10 +27,18 @@ func main() {
 		serverPort = int(p)
 	}
 
+	ctx := context.Background()
+
+	model, err := models.MakeBedrockModel(ctx)
+	if err != nil {
+		log.Fatalf("unable to create model: %v", err)
+	}
+
 	wa, err := webapp.NewWebapp(serverPort,
 		webapp.WithRedisCache(host, cachePort),
 		webapp.WithGoogleClientID(os.Getenv("GOOGLE_CLIENT_ID")),
 		webapp.WithHostname(os.Getenv("HOSTNAME")),
+		webapp.WithModel(model),
 	)
 
 	if err != nil {
