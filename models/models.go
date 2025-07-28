@@ -238,6 +238,5 @@ func getAWSSecret(secret string) (string, error) {
 		return "", fmt.Errorf("unable to parse secret response: %v", err)
 	}
 
-	fmt.Println(r.Key)
 	return r.Key, nil
 }
