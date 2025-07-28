@@ -53,13 +53,11 @@ func MakeClaude(ctx context.Context) (llms.Model, error) {
 	if k := os.Getenv("ANTHROPIC_API_KEY"); k != "" {
 		anthropicKey = k
 	} else {
-		fmt.Println("fetching AWS secret")
 		k, err := getAWSSecret(awsClaudeKeySecret)
 		if err != nil {
 			return nil, fmt.Errorf("unable to get an Anthropic key: %v", err)
 		}
 
-		fmt.Println("worked")
 		anthropicKey = k
 	}
 
