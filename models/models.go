@@ -9,13 +9,18 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"os"
 
+	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/bedrockruntime"
+	"github.com/aws/aws-sdk-go-v2/service/secretsmanager"
 	"github.com/tmc/langchaingo/llms"
 	"github.com/tmc/langchaingo/llms/anthropic"
 	"github.com/tmc/langchaingo/llms/bedrock"
 )
+
+const awsClaudeKeySecret = "prod/Anthropic/WineSuggestions"
 
 // MakeBedrockModel establishes a connection to AWS Bedrock. When working
 // locally, the code assumes the local environment has an AWS credentials for a
@@ -44,7 +49,21 @@ func MakeBedrockModel(ctx context.Context) (llms.Model, error) {
 // MakeClaude connects to claude assuming the ANTHROPIC_API_KEY environment variable
 // is set with a valid token.
 func MakeClaude(ctx context.Context) (llms.Model, error) {
-	llm, err := anthropic.New(anthropic.WithModel("claude-3-5-haiku-latest"))
+	var anthropicKey string
+	if k := os.Getenv("ANTHROPIC_API_KEY"); k != "" {
+		anthropicKey = k
+	} else {
+		fmt.Println("fetching AWS secret")
+		k, err := getAWSSecret(awsClaudeKeySecret)
+		if err != nil {
+			return nil, fmt.Errorf("unable to get an Anthropic key: %v", err)
+		}
+
+		fmt.Println("worked")
+		anthropicKey = k
+	}
+
+	llm, err := anthropic.New(anthropic.WithModel("claude-3-5-haiku-latest"), anthropic.WithToken(anthropicKey))
 	if err != nil {
 		return llm, fmt.Errorf("unable to connect to Anthropic: %v", err)
 	}
@@ -183,4 +202,42 @@ func ParseSuggestions(output string) ([]Suggestion, error) {
 	}
 
 	return parsed, nil
+}
+
+type anthropicResponse struct {
+	Key string `json:"ANTHROPIC_WINESUGGESTIONS"`
+}
+
+func getAWSSecret(secret string) (string, error) {
+	ctx := context.Background()
+
+	config, err := config.LoadDefaultConfig(ctx)
+	if err != nil {
+		return "", fmt.Errorf("unable to create AWS context: %v", err)
+	}
+
+	// Create Secrets Manager client
+	svc := secretsmanager.NewFromConfig(config)
+
+	input := &secretsmanager.GetSecretValueInput{
+		SecretId:     aws.String(secret),
+		VersionStage: aws.String("AWSCURRENT"), // VersionStage defaults to AWSCURRENT if unspecified
+	}
+
+	result, err := svc.GetSecretValue(ctx, input)
+	if err != nil {
+		// For a list of exceptions thrown, see
+		// https://docs.aws.amazon.com/secretsmanager/latest/apireference/API_GetSecretValue.html
+		return "", fmt.Errorf("unable to get secret: %v", err)
+	}
+
+	// Decrypts secret using the associated KMS key.
+	var secretString string = *result.SecretString
+	var r anthropicResponse
+	if err := json.Unmarshal([]byte(secretString), &r); err != nil {
+		return "", fmt.Errorf("unable to parse secret response: %v", err)
+	}
+
+	fmt.Println(r.Key)
+	return r.Key, nil
 }

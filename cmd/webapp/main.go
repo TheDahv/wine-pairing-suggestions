@@ -29,7 +29,7 @@ func main() {
 
 	ctx := context.Background()
 
-	model, err := models.MakeBedrockModel(ctx)
+	model, err := models.MakeClaude(ctx)
 	if err != nil {
 		log.Fatalf("unable to create model: %v", err)
 	}
