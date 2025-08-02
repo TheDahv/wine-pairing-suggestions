@@ -6,9 +6,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"math/big"
 	"net/http"
 	"net/url"
+	"time"
 
 	md "github.com/JohannesKaufmann/html-to-markdown"
 	"github.com/golang-jwt/jwt/v5"
@@ -17,16 +19,16 @@ import (
 const googleCertsURL = "https://www.googleapis.com/oauth2/v3/certs"
 
 // FetchRawFromURL fetches raw HTML encoding recipe content from the given URL.
-func FetchRawFromURL(url string) (io.ReadCloser, error) {
-	httpClient := &http.Client{}
-	req, err := http.NewRequest("GET", url, nil)
+func FetchRawFromURL(u string) (io.ReadCloser, error) {
+	httpClient := &http.Client{Timeout: 15 * time.Second}
+	req, err := http.NewRequest("GET", u, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
-
 	req.Header.Set("User-Agent", "Mozilla/5.0 (compatible; RecipeFetcher/1.0)")
 	resp, err := httpClient.Do(req)
 	if err != nil {
+		fmt.Printf("error fetching raw for url (%s): %v\n", u, err)
 		return nil, fmt.Errorf("failed to fetch URL: %w", err)
 	}
 
@@ -71,22 +73,28 @@ type Claims struct {
 }
 
 func GetGoogleJWTToken(algorithm string) (*rsa.PublicKey, error) {
+	l := log.New(log.Default().Writer(), "GetGoogleJWTToken", log.Default().Flags())
+	l.Println("GetGoogleJWTToken")
 	key := &rsa.PublicKey{}
 
 	c := http.Client{}
 	resp, err := c.Get(googleCertsURL)
 	if err != nil {
+		log.Printf("Google fetch failed: %v\n", err)
 		return key, fmt.Errorf("unable to fetch from Google: %v", err)
 	}
 	defer resp.Body.Close()
 
 	contents, err := io.ReadAll(resp.Body)
+
 	if err != nil {
+		l.Printf("JWT read failed: %v\n", err)
 		return key, fmt.Errorf("unable to read response body: %v", err)
 	}
 
 	var response googleKeysResponse
 	if err := json.Unmarshal(contents, &response); err != nil {
+		l.Printf("failed parse: %v\n", err)
 		return key, fmt.Errorf("unable to parse response JSON: %v", err)
 	}
 
@@ -107,6 +115,7 @@ func GetGoogleJWTToken(algorithm string) (*rsa.PublicKey, error) {
 		}
 	}
 
+	l.Println("didn't find algorithm match")
 	return key, fmt.Errorf("algorithm '%s' was not in certificates response", algorithm)
 }
 

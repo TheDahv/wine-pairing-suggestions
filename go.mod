@@ -4,6 +4,7 @@ go 1.24.4
 
 require (
 	github.com/JohannesKaufmann/html-to-markdown v1.6.0
+	github.com/aws/aws-lambda-go v1.49.0
 	github.com/aws/aws-sdk-go-v2 v1.36.6
 	github.com/aws/aws-sdk-go-v2/config v1.27.12
 	github.com/aws/aws-sdk-go-v2/service/bedrockruntime v1.8.1

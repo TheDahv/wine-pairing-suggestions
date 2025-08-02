@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"html/template"
 	"io"
+	"log"
 	"math/rand/v2"
 	"net/http"
 	"net/url"
@@ -22,6 +23,7 @@ import (
 
 	"github.com/thedahv/wine-pairing-suggestions/cache"
 	"github.com/thedahv/wine-pairing-suggestions/helpers"
+	"github.com/thedahv/wine-pairing-suggestions/lambdahelpers"
 	"github.com/thedahv/wine-pairing-suggestions/models"
 )
 
@@ -44,6 +46,17 @@ var recentSuggestionRx *regexp.Regexp = regexp.MustCompile(`https?://\S+|www\.\S
 
 func sessionQuotaKey(accountID string) string {
 	return fmt.Sprintf("quotas:%s", accountID)
+}
+
+// getPathValue extracts path values from request, supporting both Go 1.22 PathValue and context-based fallback
+func getPathValue(r *http.Request, key string) string {
+	// Try Go 1.22 PathValue first (this will work in regular HTTP server)
+	if value := r.PathValue(key); value != "" {
+		return value
+	}
+
+	// Fallback to context-based approach (for Lambda compatibility)
+	return lambdahelpers.GetPathValue(r, key)
 }
 
 // Webapp contains handlers and functionality suited for implementing a wine suggestions web application.
@@ -130,26 +143,26 @@ func NewWebapp(port int, options ...Option) (*Webapp, error) {
 
 // Start registers the route handlers on the web app and begins listening for traffic.
 func (wa *Webapp) Start() error {
-	fmt.Println("starting up...")
+	log.Println("starting up...")
 
-	fmt.Println("checking DB")
+	log.Println("checking DB")
 	if ok, err := wa.cache.Check(); !(ok && err == nil) {
 		return fmt.Errorf("problem connecting to cache (ok=%v): %v", ok, err)
 	}
-	fmt.Println("connected to DB")
+	log.Println("connected to DB")
 
-	fmt.Println("registering routes...")
+	log.Println("registering routes...")
 	mux := http.NewServeMux()
-	mux.HandleFunc("POST /recipes/summary/{url}", wa.withSessionRequired(wa.withSufficientQuota(wa.PostCreateRecipe)))
-	mux.HandleFunc("GET /recipes/suggestions/recent", wa.withSessionRequired(wa.GetRecentSuggestions))
-	mux.HandleFunc("GET /recipes/suggestions/{url}", wa.withSessionRequired(wa.withSufficientQuota(wa.GetRecipeWineSuggestions)))
-	mux.HandleFunc("GET /logout", wa.withSessionRequired(wa.DeleteSession))
+	mux.HandleFunc("POST /recipes/summary/{url}", wa.WithSessionRequired(wa.WithSufficientQuota(wa.PostCreateRecipe)))
+	mux.HandleFunc("GET /recipes/suggestions/recent", wa.WithSessionRequired(wa.GetRecentSuggestions))
+	mux.HandleFunc("GET /recipes/suggestions/{url}", wa.WithSessionRequired(wa.WithSufficientQuota(wa.GetRecipeWineSuggestions)))
+	mux.HandleFunc("GET /logout", wa.WithSessionRequired(wa.DeleteSession))
 	mux.HandleFunc("POST /oauth/response/", wa.PostOauthResponse)
-	mux.HandleFunc("GET /user", wa.withSessionRequired(wa.withAccountDetails(wa.GetUserDetails)))
+	mux.HandleFunc("GET /user", wa.WithSessionRequired(wa.WithAccountDetails(wa.GetUserDetails)))
 	mux.HandleFunc("GET /healthz", wa.HealthStatus)
-	mux.HandleFunc("GET /", wa.withAccountDetails(wa.GetHome))
+	mux.HandleFunc("GET /", wa.WithAccountDetails(wa.GetHome))
 
-	fmt.Printf("listening on :%d\n", wa.port)
+	log.Printf("listening on :%d\n", wa.port)
 	return http.ListenAndServe(fmt.Sprintf(":%d", wa.port), mux)
 }
 
@@ -185,7 +198,7 @@ func (wa *Webapp) deleteCookie(name string, w http.ResponseWriter) {
 	http.SetCookie(w, &cookie)
 }
 
-func (wa *Webapp) withSessionRequired(next http.HandlerFunc) http.HandlerFunc {
+func (wa *Webapp) WithSessionRequired(next http.HandlerFunc) http.HandlerFunc {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// TODO encode the account ID somehow so it's not just bare in the cookie
 		cookie, err := r.Cookie(sessionCookieName)
@@ -206,10 +219,14 @@ func (wa *Webapp) withSessionRequired(next http.HandlerFunc) http.HandlerFunc {
 	})
 }
 
-func (wa *Webapp) withAccountDetails(next http.HandlerFunc) http.HandlerFunc {
+func (wa *Webapp) WithAccountDetails(next http.HandlerFunc) http.HandlerFunc {
+	fmt.Println("creating withAccountDetails middleware")
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		l := log.New(log.Default().Writer(), "withAccountDetails", log.Default().Flags())
+
 		cookie, err := r.Cookie(sessionCookieName)
 		if err == http.ErrNoCookie {
+			l.Println("login cookie not found")
 			// There is no account to load, so we'll move on without account information loaded
 			next(w, r)
 			return
@@ -222,7 +239,7 @@ func (wa *Webapp) withAccountDetails(next http.HandlerFunc) http.HandlerFunc {
 		if err != nil {
 			// It's weird for a logged in user to not have a quota. Log it, be generous, and set a new quota.
 			// It may be a timing issue depending on when the underlying expires.
-			fmt.Printf("expected a quota for user %s, but found nothing (not even 0)\n", accountID)
+			log.Printf("expected a quota for user %s, but found nothing (not even 0)\n", accountID)
 			qs := strconv.Itoa(maxQuota)
 			wa.cache.SetNx(fmt.Sprintf("quotas:%s", accountID), qs, maxQuotaLifespanSeconds)
 			quota = qs
@@ -243,8 +260,8 @@ func (wa *Webapp) withAccountDetails(next http.HandlerFunc) http.HandlerFunc {
 	})
 }
 
-func (wa *Webapp) withSufficientQuota(next http.HandlerFunc) http.HandlerFunc {
-	return wa.withAccountDetails(func(w http.ResponseWriter, r *http.Request) {
+func (wa *Webapp) WithSufficientQuota(next http.HandlerFunc) http.HandlerFunc {
+	return wa.WithAccountDetails(func(w http.ResponseWriter, r *http.Request) {
 		var quota string
 
 		if q, ok := r.Context().Value(quotaContextName).(string); ok {
@@ -365,6 +382,7 @@ func (wa *Webapp) GetHome(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	w.Header().Add("Content-Type", "text/html")
 	if err := t.Execute(w, data); err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		fmt.Fprintf(w, "unable to render template: %v", err)
@@ -376,18 +394,23 @@ func (wa *Webapp) GetHome(w http.ResponseWriter, r *http.Request) {
 // Returns an HTML partial with the summarized analysis of the given recipe.
 func (wa *Webapp) PostCreateRecipe(w http.ResponseWriter, r *http.Request) {
 	ctx := context.Background()
-	fmt.Println("Handling PostCreateRecipe")
-	u := r.PathValue("url")
+	log.Println("Handling PostCreateRecipe")
+	u := getPathValue(r, "url")
+	log.Println("recipe is", u)
 	if u == "" {
 		helpers.SendJSONError(w, fmt.Errorf("URL required"), http.StatusBadRequest)
 		return
 	}
+	l := log.New(log.Default().Writer(), fmt.Sprintf("[PostCreateRecipe %s]", u[0:15]), log.Default().Flags())
 
+	l.Println("checking cache")
 	raw, err := wa.cache.Get(fmt.Sprintf("recipes:raw:%s", u), func() (string, error) {
+		l.Println("path miss")
 		recipeUrl, err := url.PathUnescape(u)
 		if err != nil {
 			return "", fmt.Errorf("invalid URL encoding (%s): %v", u, err)
 		}
+		l.Println("path miss. fetching at: ", recipeUrl)
 		raw, err := helpers.FetchRawFromURL(recipeUrl)
 		if err != nil {
 			return "", err
@@ -459,9 +482,9 @@ func (wa *Webapp) PostCreateRecipe(w http.ResponseWriter, r *http.Request) {
 // minimizes the need to pass the summary to this endpoint in the request.
 func (wa *Webapp) GetRecipeWineSuggestions(w http.ResponseWriter, r *http.Request) {
 	ctx := context.Background()
-	fmt.Println("Handling GetRecipeWineSuggestions")
+	log.Println("Handling GetRecipeWineSuggestions")
 
-	u := r.PathValue("url")
+	u := getPathValue(r, "url")
 	if u == "" {
 		helpers.SendJSONError(w, fmt.Errorf("URL required"), http.StatusBadRequest)
 		return
@@ -542,12 +565,19 @@ func (wa *Webapp) DeleteSession(w http.ResponseWriter, r *http.Request) {
 }
 
 func (wa *Webapp) PostOauthResponse(w http.ResponseWriter, r *http.Request) {
+	log.Println("handling oauth response")
 	if err := r.ParseForm(); err != nil {
 		helpers.SendJSONError(w, fmt.Errorf("unable to parse request form: %v", err), http.StatusBadRequest)
 		return
 	}
 
-	csrfToken := r.Form["g_csrf_token"][0]
+	tokenParts := r.Form["g_csrf_token"]
+	if len(tokenParts) == 0 {
+		helpers.SendJSONError(w, fmt.Errorf("expected csrf cookies, got %v", r.Form["g_csrf_token"]), http.StatusBadRequest)
+		return
+	}
+
+	csrfToken := tokenParts[0]
 	csrfCookie, err := wa.getCookie("g_csrf_token", r)
 
 	if err == http.ErrNoCookie {

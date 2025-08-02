@@ -1,0 +1,15 @@
+version = 0.1
+
+[default.global.parameters]
+stack_name = "wine-pairing-suggestions-lambda"
+
+[default.deploy.parameters]
+stack_name = "wine-pairing-suggestions-lambda"
+resolve_s3 = false
+s3_prefix = "wine-pairing-suggestions-lambda"
+region = "us-west-2"
+confirm_changeset = true
+capabilities = "CAPABILITY_IAM"
+parameter_overrides = "ValkeyEndpoint=\"wine-pairing-suggestions-tffajz.serverless.usw2.cache.amazonaws.com:6379\" VpcId=\"vpc-dff5a4b4\" SecurityGroupId=\"sg-70f2021f\" SubnetIds=\"subnet-def5a4b5,subnet-ddf5a4b6,subnet-dcf5a4b7,subnet-d32186f8\" GoogleClientID=\"229500153194-ouqjq9qa9aeanaqc81mrdm2ujcjm6cg4.apps.googleusercontent.com\" Hostname=\"https://wine-suggestions.thedahv.com\""
+image_repositories = []
+disable_rollback = true

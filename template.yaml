@@ -1,0 +1,114 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: Wine Pairing Suggestions - Serverless
+
+Globals:
+  Function:
+    Timeout: 60
+    MemorySize: 2048
+    Runtime: provided.al2023
+    Environment:
+      Variables:
+        VALKEY_ENDPOINT: !Ref ValkeyEndpoint
+        GOOGLE_CLIENT_ID: !Ref GoogleClientID
+        HOSTNAME: !Ref Hostname
+
+Parameters:
+  ValkeyEndpoint:
+    Type: String
+    Description: Serverless Valkey cache endpoint
+    
+  VpcId:
+    Type: String
+    Description: Existing VPC ID
+    
+  SecurityGroupId:
+    Type: String
+    Description: Existing security group ID
+    
+  SubnetIds:
+    Type: CommaDelimitedList
+    Description: Existing subnet IDs for Lambda deployment
+    
+  GoogleClientID:
+    Type: String
+    Description: Google OAuth Client ID
+    
+  Hostname:
+    Type: String
+    Description: Application hostname for OAuth redirects (e.g. wine-suggestions.thedahv.com)
+    Default: wine-suggestions.thedahv.com
+
+  AnthropicApiKey:
+    Type: String
+    Description: Anthropic API Key
+    NoEcho: true
+
+  CertificateArn:
+    Type: String
+    Description: ARN of the ACM certificate for the custom domain
+
+Resources:
+  # Lambda Function
+  WinePairingFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildData: makefile
+    Properties:
+      CodeUri: ./
+      Handler: bootstrap
+      Events:
+        # All API routes handled by single Lambda
+        APIRoot:
+          Type: HttpApi
+          Properties:
+            Path: /
+            Method: GET
+        APIProxy:
+          Type: HttpApi
+          Properties:
+            Path: /{proxy+}
+            Method: ANY
+      Environment:
+        Variables:
+          ANTHROPIC_API_KEY: !Ref AnthropicApiKey
+          VALKEY_ENDPOINT: !Ref ValkeyEndpoint
+          GOOGLE_CLIENT_ID: !Ref GoogleClientID
+          HOSTNAME: !Ref Hostname
+      VpcConfig:
+        SecurityGroupIds:
+          - !Ref SecurityGroupId
+        SubnetIds:
+          - subnet-0d7bec672ecc67b69
+          - subnet-0fc5205a59aa350ab
+      Policies:
+        - CloudWatchLogsFullAccess
+
+  CustomDomain:
+    Type: AWS::ApiGatewayV2::DomainName
+    Properties:
+      DomainName: "wine-suggestions.thedahv.com"
+      DomainNameConfigurations:
+        - CertificateArn: !Ref CertificateArn
+          EndpointType: REGIONAL
+
+  PathMapping:
+    Type: AWS::ApiGatewayV2::ApiMapping
+    DependsOn: CustomDomain
+    Properties:
+      DomainName: "wine-suggestions.thedahv.com"
+      ApiId: !Ref ServerlessHttpApi
+      Stage: "$default"
+
+Outputs:
+  WinePairingAPI:
+    Description: API Gateway endpoint URL
+    Value: !Sub "https://${ServerlessHttpApi}.execute-api.${AWS::Region}.amazonaws.com"
+  
+  CustomDomainEndpoint:
+    Description: "Custom domain endpoint URL"
+    Value: !GetAtt CustomDomain.RegionalDomainName
+
+  LambdaFunction:
+    Description: Lambda Function ARN
+    Value: !GetAtt WinePairingFunction.Arn
