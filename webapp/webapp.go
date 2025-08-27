@@ -19,7 +19,13 @@ import (
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
+	adapter "github.com/i2y/langchaingo-mcp-adapter"
+	"github.com/mark3labs/mcp-go/client"
+	mcpclient "github.com/mark3labs/mcp-go/client"
+	"github.com/mark3labs/mcp-go/server"
+	mcpserver "github.com/mark3labs/mcp-go/server"
 	"github.com/tmc/langchaingo/llms"
+	"github.com/tmc/langchaingo/tools"
 
 	"github.com/thedahv/wine-pairing-suggestions/cache"
 	"github.com/thedahv/wine-pairing-suggestions/helpers"
@@ -68,6 +74,9 @@ type Webapp struct {
 	googleClientID string
 	hostname       string
 	model          llms.Model
+	toolserver     *mcpserver.MCPServer
+	toolclient     *mcpclient.Client
+	tools          []tools.Tool
 }
 
 // Option configures the Webapp with various options
@@ -91,6 +100,13 @@ func WithRedisCache(host string, port int) Option {
 	}
 }
 
+func WithCache(cache cache.Cacher) Option {
+	return func(wa *Webapp) error {
+		wa.cache = cache
+		return nil
+	}
+}
+
 // WithGoogleClientID configures settings for Google OAuth.
 func WithGoogleClientID(id string) Option {
 	return func(wa *Webapp) error {
@@ -109,9 +125,27 @@ func WithHostname(hostname string) Option {
 
 // WithModel sets the model for the webapp, allowing clients to decide which
 // model to use at startup.
-func WithModel(model llms.Model) Option {
+func WithModel(model llms.Model, server *server.MCPServer) Option {
 	return func(wa *Webapp) error {
 		wa.model = model
+		wa.toolserver = server
+
+		client, err := client.NewInProcessClient(wa.toolserver)
+		if err != nil {
+			return fmt.Errorf("could not create MCP client: %v", err)
+		}
+		wa.toolclient = client
+		a, err := adapter.New(client)
+		if err != nil {
+			return fmt.Errorf("unable to create adapter: %v", err)
+		}
+
+		if t, err := a.Tools(); err != nil {
+			return fmt.Errorf("unable to create tools: %v", err)
+		} else {
+			wa.tools = t
+		}
+
 		return nil
 	}
 }
@@ -136,6 +170,10 @@ func NewWebapp(port int, options ...Option) (*Webapp, error) {
 
 	if wa.cache == nil {
 		return wa, fmt.Errorf("no cache configured in options")
+	}
+
+	if wa.toolclient != nil {
+		defer wa.toolclient.Close()
 	}
 
 	return wa, nil
@@ -233,7 +271,7 @@ func (wa *Webapp) WithAccountDetails(next http.HandlerFunc) http.HandlerFunc {
 		}
 
 		accountID := cookie.Value
-		quota, err := wa.cache.Get(fmt.Sprintf("quotas:%s", accountID), func() (string, error) {
+		quota, err := wa.cache.GetOrFetch(fmt.Sprintf("quotas:%s", accountID), func() (string, error) {
 			return "", fmt.Errorf("expected quota in quotas cache")
 		})
 		if err != nil {
@@ -245,7 +283,7 @@ func (wa *Webapp) WithAccountDetails(next http.HandlerFunc) http.HandlerFunc {
 			quota = qs
 		}
 
-		email, err := wa.cache.Get(fmt.Sprintf("accounts:%s", accountID), func() (string, error) {
+		email, err := wa.cache.GetOrFetch(fmt.Sprintf("accounts:%s", accountID), func() (string, error) {
 			return "", fmt.Errorf("expected email in accounts cache")
 		})
 		if err != nil {
@@ -404,7 +442,7 @@ func (wa *Webapp) PostCreateRecipe(w http.ResponseWriter, r *http.Request) {
 	l := log.New(log.Default().Writer(), fmt.Sprintf("[PostCreateRecipe %s]", u[0:15]), log.Default().Flags())
 
 	l.Println("checking cache")
-	raw, err := wa.cache.Get(fmt.Sprintf("recipes:raw:%s", u), func() (string, error) {
+	raw, err := wa.cache.GetOrFetch(fmt.Sprintf("recipes:raw:%s", u), func() (string, error) {
 		l.Println("path miss")
 		recipeUrl, err := url.PathUnescape(u)
 		if err != nil {
@@ -430,7 +468,7 @@ func (wa *Webapp) PostCreateRecipe(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	md, err := wa.cache.Get(fmt.Sprintf("recipes:parsed:%s", u), func() (string, error) {
+	md, err := wa.cache.GetOrFetch(fmt.Sprintf("recipes:parsed:%s", u), func() (string, error) {
 		return helpers.CreateMarkdownFromRaw(u, raw)
 	})
 	if err != nil {
@@ -438,7 +476,7 @@ func (wa *Webapp) PostCreateRecipe(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	summary, err := wa.cache.Get(fmt.Sprintf("recipes:summarized:%s", u), func() (string, error) {
+	summary, err := wa.cache.GetOrFetch(fmt.Sprintf("recipes:summarized:%s", u), func() (string, error) {
 		out, err := models.SummarizeRecipe(ctx, wa.model, md)
 		if err != nil {
 			return "", fmt.Errorf("unable to get summary prompt response: %v", err)

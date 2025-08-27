@@ -2,6 +2,7 @@ package helpers
 
 import (
 	"crypto/rsa"
+	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -132,4 +133,11 @@ func SendJSONError(w http.ResponseWriter, err error, status int) {
 		Message: err.Error(),
 	})
 	fmt.Fprint(w, string(out))
+}
+
+func HashContent(content string) string {
+	// Create a SHA-256 hash of the content
+	h := sha256.New()
+	io.WriteString(h, content)
+	return string(h.Sum(nil))
 }

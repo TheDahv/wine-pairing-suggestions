@@ -15,7 +15,9 @@ import (
 
 	"github.com/aws/aws-lambda-go/events"
 
+	"github.com/thedahv/wine-pairing-suggestions/cache"
 	helpers "github.com/thedahv/wine-pairing-suggestions/lambdahelpers"
+	"github.com/thedahv/wine-pairing-suggestions/mcp"
 	"github.com/thedahv/wine-pairing-suggestions/models"
 	"github.com/thedahv/wine-pairing-suggestions/webapp"
 )
@@ -39,6 +41,7 @@ func NewHandler() (*Handler, error) {
 	var options []webapp.Option
 
 	// Add cache option
+	var c cache.Cacher
 	if cacheEndpoint := os.Getenv("VALKEY_ENDPOINT"); cacheEndpoint != "" {
 		parts := strings.Split(cacheEndpoint, ":")
 		host := parts[0]
@@ -50,11 +53,12 @@ func NewHandler() (*Handler, error) {
 			}
 		}
 		log.Printf("with cache: h=%s, p=%d\n", host, port)
-		options = append(options, webapp.WithRedisCache(host, port))
+		c = cache.NewRedis(host, port)
 	} else {
 		log.Println("using memory cache")
-		options = append(options, webapp.WithMemoryCache())
+		c = cache.NewMemory()
 	}
+	options = append(options, webapp.WithCache(c))
 
 	// Add other options
 	if clientID := os.Getenv("GOOGLE_CLIENT_ID"); clientID != "" {
@@ -63,7 +67,8 @@ func NewHandler() (*Handler, error) {
 	if hostname := os.Getenv("HOSTNAME"); hostname != "" {
 		options = append(options, webapp.WithHostname(hostname))
 	}
-	options = append(options, webapp.WithModel(model))
+
+	options = append(options, webapp.WithModel(model, mcp.MakeServer(c)))
 
 	// Create webapp with serverless-friendly options
 	wa, err := webapp.NewWebapp(0, options...) // Port not used in Lambda

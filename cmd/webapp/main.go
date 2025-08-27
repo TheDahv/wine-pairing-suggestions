@@ -2,10 +2,13 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"os"
 	"strconv"
 
+	"github.com/thedahv/wine-pairing-suggestions/cache"
+	"github.com/thedahv/wine-pairing-suggestions/mcp"
 	"github.com/thedahv/wine-pairing-suggestions/models"
 	"github.com/thedahv/wine-pairing-suggestions/webapp"
 )
@@ -34,11 +37,16 @@ func main() {
 		log.Fatalf("unable to create model: %v", err)
 	}
 
+	fmt.Printf("Connecting to cache (host=%s, host=%d)... ", host, cachePort)
+	c := cache.NewRedis(host, cachePort)
+	fmt.Println("Connected")
+	s := mcp.MakeServer(c)
+
 	wa, err := webapp.NewWebapp(serverPort,
-		webapp.WithRedisCache(host, cachePort),
+		webapp.WithCache(c),
 		webapp.WithGoogleClientID(os.Getenv("GOOGLE_CLIENT_ID")),
 		webapp.WithHostname(os.Getenv("HOSTNAME")),
-		webapp.WithModel(model),
+		webapp.WithModel(model, s),
 	)
 
 	if err != nil {
