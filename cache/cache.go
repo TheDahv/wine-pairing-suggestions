@@ -3,6 +3,7 @@ package cache
 import (
 	"context"
 	"crypto/tls"
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
@@ -16,7 +17,8 @@ type Resolver func() (string, error)
 
 // Cacher describes the functionality of a cache provider.
 type Cacher interface {
-	Get(string, Resolver) (string, error)
+	Get(string) (string, error)
+	GetOrFetch(string, Resolver) (string, error)
 	Set(string, string) error
 	SetEx(string, string, int) error
 	SetNx(string, string, int) error
@@ -30,12 +32,22 @@ type memory struct {
 	cache map[string]string
 }
 
+var ErrKeyNotFound = errors.New("key not found")
+
 // NewMemory creates a new in-memory cache
 func NewMemory() *memory {
 	return &memory{cache: make(map[string]string)}
 }
 
-func (m *memory) Get(key string, onMiss Resolver) (string, error) {
+func (m *memory) Get(key string) (string, error) {
+	if hit, ok := m.cache[key]; ok {
+		return hit, nil
+	} else {
+		return "", ErrKeyNotFound
+	}
+}
+
+func (m *memory) GetOrFetch(key string, onMiss Resolver) (string, error) {
 	if hit, ok := m.cache[key]; ok {
 		return hit, nil
 	}
@@ -118,7 +130,23 @@ func NewRedis(host string, port int) *redis {
 	return &redis{conn: rdb.NewClient(cacheops)}
 }
 
-func (r *redis) Get(key string, onMiss Resolver) (string, error) {
+func (r *redis) Get(key string) (string, error) {
+	ctx := context.TODO()
+	hit, err := r.conn.Get(ctx, key).Result()
+
+	if err != nil && err != rdb.Nil {
+		return "", fmt.Errorf("unable to fetch from Redis: %v", err)
+	}
+
+	// Handle cache miss
+	if err == rdb.Nil {
+		return "", ErrKeyNotFound
+	}
+
+	return hit, nil
+}
+
+func (r *redis) GetOrFetch(key string, onMiss Resolver) (string, error) {
 	ctx := context.TODO()
 	hit, err := r.conn.Get(ctx, key).Result()
 
