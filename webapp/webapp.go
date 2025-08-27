@@ -11,6 +11,7 @@ import (
 	"math/rand/v2"
 	"net/http"
 	"net/url"
+	"os"
 	"path"
 	"path/filepath"
 	"regexp"
@@ -569,6 +570,9 @@ func (wa *Webapp) GetRecipeWineSuggestionsV2(w http.ResponseWriter, r *http.Requ
 	}
 
 	l.Println("model came back")
+	if os.Getenv("LOG_LEVEL") == "TRACE" {
+		l.Println(response)
+	}
 	_, err = models.ParseSuggestionsV2(response)
 	if err != nil {
 		helpers.SendJSONError(w, fmt.Errorf("error generating suggestions: %v", err), http.StatusInternalServerError)
