@@ -325,6 +325,162 @@
             --bulma-input-border-color: var(--wine-border-gray);
             --bulma-input-focus-border-color: var(--wine-sage);
             --bulma-input-focus-box-shadow-color: hsla(89, 21%, 61%, 0.25);
+
+            /* Wine App Tabs Styling - Bulma Override */
+
+            .tabs {
+                --tab-border-color: var(--wine-border-gray);
+                --tab-text-color: var(--wine-medium-gray);
+                --tab-active-color: var(--bulma-primary);
+                --tab-hover-color: var(--wine-sage);
+            }
+
+            /* Tab container */
+            .tabs ul {
+                border-bottom: 2px solid var(--tab-border-color);
+                background: transparent;
+            }
+
+            /* Individual tab styling */
+            .tabs li a {
+                border: none;
+                color: var(--tab-text-color);
+                padding: 0.75rem 1.5rem;
+                transition: all 300ms ease-out;
+                border-bottom: 3px solid transparent;
+                font-family: var(--bulma-family-primary);
+            }
+
+            /* Tab hover state */
+            .tabs li a:hover {
+                color: var(--tab-hover-color);
+                border-bottom-color: var(--tab-hover-color);
+                background-color: hsla(89, 21%, 61%, 0.05);
+            }
+
+            /* Active tab */
+            .tabs li.is-active a {
+                color: var(--tab-active-color);
+                border-bottom-color: var(--tab-active-color);
+                background-color: transparent;
+                font-weight: 600;
+            }
+
+            .tabs li.is-active a:hover {
+                color: var(--tab-active-color);
+                border-bottom-color: var(--tab-active-color);
+            }
+
+            /* Tab content styling */
+            .tab-content {
+                padding: 2rem 0;
+                background-color: transparent;
+            }
+
+            /* Boxed tabs variant */
+            .tabs.is-boxed li a {
+                border: 1px solid var(--tab-border-color);
+                border-bottom: none;
+                border-radius: 0.75rem 0.75rem 0 0;
+                background-color: var(--wine-light-gray);
+                margin-bottom: -1px;
+            }
+
+            .tabs.is-boxed li a:hover {
+                background-color: white;
+                border-color: var(--tab-hover-color);
+            }
+
+            .tabs.is-boxed li.is-active a {
+                background-color: white;
+                border-color: var(--tab-active-color);
+                border-bottom-color: white;
+            }
+
+            /* Toggle tabs variant */
+            .tabs.is-toggle li a {
+                border: 1px solid var(--tab-border-color);
+                border-radius: 0.5rem;
+                margin-right: 0.5rem;
+                background-color: var(--wine-light-gray);
+            }
+
+            .tabs.is-toggle li a:hover {
+                background-color: hsla(89, 21%, 61%, 0.1);
+                border-color: var(--tab-hover-color);
+            }
+
+            .tabs.is-toggle li.is-active a {
+                background-color: var(--tab-active-color);
+                color: white;
+                border-color: var(--tab-active-color);
+            }
+
+            /* Centered tabs */
+            .tabs.is-centered ul {
+                justify-content: center;
+            }
+
+            /* Right-aligned tabs */
+            .tabs.is-right ul {
+                justify-content: flex-end;
+            }
+
+            /* Fullwidth tabs */
+            .tabs.is-fullwidth li {
+                flex: 1;
+            }
+
+            .tabs.is-fullwidth li a {
+                text-align: center;
+            }
+
+            /* Size variants */
+            .tabs.is-small li a {
+                font-size: 0.875rem;
+                padding: 0.5rem 1rem;
+            }
+
+            .tabs.is-medium li a {
+                font-size: 1.125rem;
+                padding: 0.875rem 1.75rem;
+            }
+
+            .tabs.is-large li a {
+                font-size: 1.25rem;
+                padding: 1rem 2rem;
+            }
+
+            /* Wine-specific tab icons */
+            .tabs .icon {
+                color: inherit;
+                margin-right: 0.5rem;
+            }
+
+            /* Focus states for accessibility */
+            .tabs li a:focus {
+                outline: 2px solid var(--wine-sage);
+                outline-offset: 2px;
+                border-radius: 0.25rem;
+            }
+
+            /* Responsive behavior */
+            @media screen and (max-width: 768px) {
+                .tabs.is-fullwidth li a {
+                    padding: 0.75rem 0.5rem;
+                    font-size: 0.875rem;
+                }
+
+                .tabs:not(.is-fullwidth) {
+                    overflow-x: auto;
+                    white-space: nowrap;
+                }
+
+                .tabs ul {
+                    flex-wrap: nowrap;
+                }
+            }
+
         }
     </style>
     <style>

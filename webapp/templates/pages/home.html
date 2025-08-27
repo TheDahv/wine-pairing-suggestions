@@ -8,11 +8,17 @@
             email: '{{.Email}}',
             quota: Number.isNaN(parseInt('{{.Quota}}', 10)) ? null : parseInt('{{.Quota}}', 10),
         });
-
+        Alpine.store('tabs', {
+            activeTab: 'url', // url | content
+            switchTab(tab) {
+                this.activeTab = tab;
+            }
+        });
         Alpine.store('recipe', {
             summaryState: 'NOT_STARTED',
             suggestionsState: 'NOT_STARTED',
             url: '',
+            content: '',
             summary: '',
             summaryError: '',
             suggestions: [],
@@ -24,6 +30,10 @@
                 this.suggestionsError = '';
                 this.summary = '';
                 this.suggestions = [];
+            },
+            resetForm() {
+                this.url = '';
+                this.content = '';
             },
             async fetch() {
                 const url = this.url;
@@ -96,6 +106,82 @@
                     // Eat the error. The user gets the latest on refresh
                     console.log({ message: 'error updating quota', error })
                 }
+            },
+            async fetchV2() {
+                const input = this.url || this.content;
+                if (!input) {
+                    return;
+                }
+
+                this.reset();
+                var parsed;
+                try {
+                    this.summaryState = 'FETCHING';
+                    const result = await fetch(`/recipes/suggestionsV2/`, {
+                        method: 'POST',
+                        body: input,
+                        headers: {
+                            'Accept': 'application/json'
+                        }
+                    });
+                    parsed = await result.json();
+                    if (result.status < 200 || result.status >= 400) {
+                        throw new Error(parsed.message);
+                    }
+                } catch (error) {
+                    console.error({ log: 'failed to fetch', error });
+                    this.summaryState = 'ERROR';
+                    const errorParts = error.toString().split(':');
+                    this.summaryError = errorParts[errorParts.length - 1];
+
+                    // Stop processing here.
+                    return;
+                }
+
+                this.summary = parsed.summary;
+                this.suggestions = parsed.suggestions;
+
+                if (parsed.usedQuota) {
+                    // Update user's current quota
+                    try {
+                        const result = await fetch(`/user`, {
+                            method: 'GET',
+                            headers: {
+                                'Accept': 'application/json'
+                            }
+                        });
+                        const parsed = await result.json();
+                        if (result.status < 200 || result.status >= 400) {
+                            throw new Error(parsed.message)
+                        }
+
+                        Alpine.store('user').quota = parsed.quota;
+                    } catch (error) {
+                        // Eat the error. The user gets the latest on refresh
+                        console.log({ message: 'error updating quota', error })
+                    }
+                }
+                this.summaryState = 'SUCCESS';
+                this.suggestionsState = 'SUCCESS';
+
+                // Update user's current quota
+                try {
+                    const result = await fetch(`/user`, {
+                        method: 'GET',
+                        headers: {
+                            'Accept': 'application/json'
+                        }
+                    });
+                    const parsed = await result.json();
+                    if (result.status < 200 || result.status >= 400) {
+                        throw new Error(parsed.message)
+                    }
+
+                    Alpine.store('user').quota = parsed.quota;
+                } catch (error) {
+                    // Eat the error. The user gets the latest on refresh
+                    console.log({ message: 'error updating quota', error })
+                }
             }
         });
         Alpine.store('previousrecipes', {
@@ -144,32 +230,59 @@
     </div>
 
     {{if .Email }}
-    <form class="box" x-data @submit.prevent="$store.recipe.fetch()">
-        <p class="block">
-            <label for="url">
-                Let's add the URL for a recipe you want to pair.
-                <input name="url" type="text" x-model="$store.recipe.url">
-            </label>
-        </p>
-        <p class="block" x-data>
-            <input type="submit" class="button is-primary" value="Get Suggestions"
-                x-bind:disabled="!($store.recipe.url && $store.user.quota)" />
-        </p>
-        <div class="block" x-init="$store.previousrecipes.fetch()" x-data>
-            <div x-show="$store.previousrecipes.state == 'SUCCESS'">
-                <strong>Try it out with a recently analyzed recipe:</strong>
-                <ul>
-                    <template x-for="url in $store.previousrecipes.urls">
-                        <li>
-                            <a x-text="url" @click.prevent="$store.recipe.url = url">
-                        </li>
-                    </template>
-                </ul>
-            </div>
-            <div x-show="$store.previousrecipes.state == 'FETCHING'">
-                <p><em>Loading websites with recent suggestions.</em></p>
+    <form class="box" x-data @submit.prevent="$store.recipe.fetchV2()" x-data>
+        <div class="tabs is-boxed">
+            <ul>
+                <li :class="{'is-active': $store.tabs.activeTab == 'url'}"><a
+                        @click="$store.tabs.switchTab('url') || $store.recipe.resetForm()">Scan
+                        a recipe site</a></li>
+                <li :class="{'is-active': $store.tabs.activeTab == 'content'}"><a
+                        @click="$store.tabs.switchTab('content')">Describe a recipe</a></li>
+            </ul>
+        </div>
+        <!-- Recipe URL Tab Content -->
+        <div x-show="$store.tabs.activeTab == 'url'">
+            <p class="block">
+                <label for="url">
+                    Let's add the URL for a recipe you want to pair.
+                    <input name="url" class="input" type="text" x-model="$store.recipe.url">
+                </label>
+            </p>
+            <p class="block" x-data>
+                <input type="submit" class="button is-primary" value="Get Suggestions"
+                    x-bind:disabled="!($store.recipe.url && $store.user.quota)" />
+            </p>
+            <div class="block" x-init="$store.previousrecipes.fetch()" x-data>
+                <div x-show="$store.previousrecipes.state == 'SUCCESS'">
+                    <strong>Try it out with a recently analyzed recipe:</strong>
+                    <ul>
+                        <template x-for="url in $store.previousrecipes.urls">
+                            <li>
+                                <a x-text="url" @click.prevent="$store.recipe.url = url">
+                            </li>
+                        </template>
+                    </ul>
+                </div>
+                <div x-show="$store.previousrecipes.state == 'FETCHING'">
+                    <p><em>Loading websites with recent suggestions.</em></p>
+                </div>
             </div>
         </div>
+        <!-- /Recipe URL Tab Content -->
+        <!-- Recipe Content -->
+        <div x-show="$store.tabs.activeTab == 'content'">
+            <p class="block">
+                <label for="url">
+                    Describe the recipe you're making. Emphasize the key ingredients that define your dish.
+                    <textarea class="textarea" name="content" x-model="$store.recipe.content"></textarea>
+                </label>
+            </p>
+            <p class="block" x-data>
+                <input type="submit" class="button is-primary" value="Get Suggestions"
+                    x-bind:disabled="!($store.recipe.content && $store.user.quota)" />
+            </p>
+        </div>
+        <!-- /Recipe Content -->
     </form>
 </section>
 
