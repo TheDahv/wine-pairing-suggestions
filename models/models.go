@@ -234,6 +234,8 @@ func GeneratePairingSuggestionsV2(ctx context.Context, model llms.Model, tools [
 	- Accessible wines from common shops
 	- Simple pairing explanations
 
+	Don't explain your answer after you create the JSON. Let the JSON be the final answer.
+
 	Always return this JSON format:
 	{
 		"suggestions": [
