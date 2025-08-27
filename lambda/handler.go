@@ -197,6 +197,8 @@ func (h *Handler) routeRequest(w http.ResponseWriter, r *http.Request) {
 		h.webapp.WithSessionRequired(h.webapp.WithSufficientQuota(h.webapp.PostCreateRecipe))(w, r)
 	case method == "GET" && path == "/recipes/suggestions/recent":
 		h.webapp.WithSessionRequired(h.webapp.GetRecentSuggestions)(w, r)
+	case method == "POST" && path == "/recipes/suggestionsV2/":
+		h.webapp.WithSessionRequired(h.webapp.WithSufficientQuota(h.webapp.GetRecipeWineSuggestionsV2))(w, r)
 	case method == "GET" && strings.HasPrefix(path, "/recipes/suggestions/"):
 		// TODO handle error
 		u := strings.TrimPrefix(path, "/recipes/suggestions/")

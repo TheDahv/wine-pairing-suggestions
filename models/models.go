@@ -10,14 +10,18 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"strings"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/bedrockruntime"
 	"github.com/aws/aws-sdk-go-v2/service/secretsmanager"
+	"github.com/tmc/langchaingo/agents"
+	"github.com/tmc/langchaingo/chains"
 	"github.com/tmc/langchaingo/llms"
 	"github.com/tmc/langchaingo/llms/anthropic"
 	"github.com/tmc/langchaingo/llms/bedrock"
+	"github.com/tmc/langchaingo/tools"
 )
 
 const awsClaudeKeySecret = "prod/Anthropic/WineSuggestions"
@@ -46,6 +50,8 @@ func MakeBedrockModel(ctx context.Context) (llms.Model, error) {
 	return llm, nil
 }
 
+const claudeModelId = "claude-3-5-haiku-latest"
+
 // MakeClaude connects to claude assuming the ANTHROPIC_API_KEY environment variable
 // is set with a valid token.
 func MakeClaude(ctx context.Context) (llms.Model, error) {
@@ -61,7 +67,7 @@ func MakeClaude(ctx context.Context) (llms.Model, error) {
 		anthropicKey = k
 	}
 
-	llm, err := anthropic.New(anthropic.WithModel("claude-3-5-haiku-latest"), anthropic.WithToken(anthropicKey))
+	llm, err := anthropic.New(anthropic.WithModel(claudeModelId), anthropic.WithToken(anthropicKey))
 	if err != nil {
 		return llm, fmt.Errorf("unable to connect to Anthropic: %v", err)
 	}
@@ -189,6 +195,104 @@ func GeneratePairingSuggestions(ctx context.Context, model llms.Model, summary s
 	}
 
 	return answer, nil
+}
+
+func GeneratePairingSuggestionsV2(ctx context.Context, model llms.Model, tools []tools.Tool, input string) (string, error) {
+	prompt := fmt.Sprintf(`
+	Generate wine pairings for the user's recipe input. Use tools to fetch and cache web content.
+
+	<USER_INPUT>
+	%s
+	</USER_INPUT>
+
+	Process:
+	1. Check if input is URL or recipe text
+	2. Validate input is actually about food/recipes - abort with error if not
+	3. For URLs: 
+	- Use FetchSite to get content (this handles Raw->Parsed caching automatically)
+	- Check CacheGet("recipes:summarized:<URL>") for existing wine-pairing summary
+	- If no cached summary: Create recipe summary focusing on wine pairing elements from the parsed content, then CacheWrite("recipes:summarized:<URL>", summary)
+	4. For recipe text:
+	- Use HashRecipeSummary to get content hash
+	- Check CacheGet("recipes:summarized:<hash>") for existing wine-pairing summary  
+	- If no cached summary: Create recipe summary focusing on wine pairing elements, then CacheWrite("recipes:summarized:<hash>", summary)
+	7. If no cached pairings: Generate 5-10 new wine pairings.
+
+	NOTE: FetchSite tool automatically handles caching raw HTML at
+	"recipes:raw:<URL>" and parsed Markdown at "recipes:parsed:<URL>". The model
+	only needs to handle the third phase: creating and caching wine-pairing
+	summaries at "recipes:summarized:<URL>".
+
+	Recipe summary should include:
+	- Primary flavors and cooking methods
+	- Key ingredients (most important first)  
+	- Dish weight (light/medium/heavy)
+	- Sauce/seasoning profile
+
+	Wine pairing criteria:
+	- Match dish weight and flavors
+	- Accessible wines from common shops
+	- Simple pairing explanations
+
+	Always return this JSON format:
+	{
+		"suggestions": [
+			{
+			"style": "wine name",
+			"region": "wine region", 
+			"description": "one sentence wine description",
+			"pairingNote": "one sentence pairing reason"
+			}
+		],
+		"summary": "one paragraph summary of the recipe highlighting flavors, cooking methods, key ingredients, and dish weight",
+		"error": string or null
+	}
+
+	Error handling:
+	- Non-recipe content (URLs or text): Return error "Content is not about food or recipes"
+	- Failed fetches: Return error
+	- Invalid input: Return error	 
+	`, input)
+
+	agent := agents.NewOneShotAgent(model, tools, agents.WithMaxIterations(3))
+	//executor := agents.NewExecutor(agent, agents.WithCallbacksHandler(callbacks.LogHandler{}))
+	executor := agents.NewExecutor(agent)
+
+	result, err := chains.Run(ctx, executor, prompt)
+	if err != nil {
+		return "", fmt.Errorf("agent run error: %v", err)
+	}
+
+	var sb strings.Builder
+	for l := range strings.Lines(result) {
+		if strings.HasPrefix(result, "Thought: ") || strings.HasPrefix(result, "Action :") || strings.HasPrefix(result, "Action Input:") {
+			continue
+		}
+
+		sb.WriteString(l)
+	}
+
+	return strings.TrimSpace(sb.String()), nil
+}
+
+type SuggestionsResponse struct {
+	Suggestions []Suggestion `json:"suggestions"`
+	Summary     string       `json:"summary"`
+	ErrorMsg    string       `json:"error,omitempty"`
+}
+
+func ParseSuggestionsV2(output string) (SuggestionsResponse, error) {
+	var r SuggestionsResponse
+	err := json.Unmarshal([]byte(output), &r)
+	if err != nil {
+		return r, fmt.Errorf("could not parse response: %v", err)
+	}
+
+	if r.ErrorMsg != "" {
+		return r, fmt.Errorf("agent detected an error: %v", r.ErrorMsg)
+	}
+
+	return r, nil
 }
 
 // ParseSuggestions parses LLM output into a Go type using JSON type annotations
