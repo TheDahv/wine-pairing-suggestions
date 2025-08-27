@@ -194,6 +194,7 @@ func (wa *Webapp) Start() error {
 	mux.HandleFunc("POST /recipes/summary/{url}", wa.WithSessionRequired(wa.WithSufficientQuota(wa.PostCreateRecipe)))
 	mux.HandleFunc("GET /recipes/suggestions/recent", wa.WithSessionRequired(wa.GetRecentSuggestions))
 	mux.HandleFunc("GET /recipes/suggestions/{url}", wa.WithSessionRequired(wa.WithSufficientQuota(wa.GetRecipeWineSuggestions)))
+	mux.HandleFunc("POST /recipes/suggestionsV2/", wa.WithSessionRequired(wa.WithSufficientQuota(wa.GetRecipeWineSuggestionsV2)))
 	mux.HandleFunc("GET /logout", wa.WithSessionRequired(wa.DeleteSession))
 	mux.HandleFunc("POST /oauth/response/", wa.PostOauthResponse)
 	mux.HandleFunc("GET /user", wa.WithSessionRequired(wa.WithAccountDetails(wa.GetUserDetails)))
@@ -513,6 +514,84 @@ func (wa *Webapp) PostCreateRecipe(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprint(w, string(out))
 }
 
+func getCacheKeyForInput(input string) string {
+	// test for URL. use content hash otherwise.
+	if matches := recentSuggestionRx.FindString(input); matches != "" {
+		// Input is a URL, so use it directly as cache key
+		return fmt.Sprintf("recipes:suggestions-json:%s", matches)
+	}
+
+	// Input is not a URL, hash the content for cache key
+	hash := helpers.HashContent(input)
+	return fmt.Sprintf("recipes:suggestions-json:content:%s", hash)
+}
+
+// GetRecipeWineSuggestionsV2 implements the route at
+// "GET /recipes/suggestionsV2/{url}". Note that "POST /recipes" MUST be called first.
+// Otherwise, this route calls a bad request error since the recipe summary
+// hasn't been cached yet. This introduces a stateful dependency, but it
+// minimizes the need to pass the summary to this endpoint in the request.
+func (wa *Webapp) GetRecipeWineSuggestionsV2(w http.ResponseWriter, r *http.Request) {
+	ctx := context.Background()
+	l := log.New(log.Default().Writer(), "[GetRecipeWineSuggestionsV2] ", log.Default().Flags())
+	l.Println("Handling GetRecipeWineSuggestionsV2")
+
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		helpers.SendJSONError(w, fmt.Errorf("unable to read request: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	input := strings.TrimSpace(string(body))
+
+	if input == "" {
+		helpers.SendJSONError(w, fmt.Errorf("input cannot be empty"), http.StatusBadRequest)
+		return
+	}
+
+	k := getCacheKeyForInput(input)
+	l.Println("Checking cache for this input", k)
+	if cached, err := wa.cache.Get(k); err == nil {
+		l.Println("Returning cached result for key", k)
+		l.Println(cached)
+		w.Header().Add("Content-Type", "application/json")
+		fmt.Fprint(w, cached)
+		return
+	}
+
+	l.Println("cache miss. calling model")
+	response, err := models.GeneratePairingSuggestionsV2(ctx, wa.model, wa.tools, input)
+	if err != nil {
+		l.Println("error from model")
+		l.Println(err)
+		helpers.SendJSONError(w, fmt.Errorf("error generating suggestions: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	l.Println("model came back")
+	_, err = models.ParseSuggestionsV2(response)
+	if err != nil {
+		helpers.SendJSONError(w, fmt.Errorf("error generating suggestions: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	// TODO take over final result caching from the prompt; just do it in code
+	if err := wa.cache.Set(k, response); err != nil {
+		l.Printf("error! couldn't write cache (key=%s): %v\n", k, err)
+	}
+
+	accountID := r.Context().Value(sessionContextName)
+	if a, ok := accountID.(string); ok {
+		l.Println("Decrementing quota for", accountID)
+		wa.cache.Decr(sessionQuotaKey(a))
+	} else {
+		l.Println("Unable to look up account to decrement quota")
+	}
+
+	w.Header().Add("Content-Type", "application/json")
+	fmt.Fprint(w, response)
+}
+
 // GetRecipeWineSuggestions implements the route at
 // "GET /recipes/suggestions/{url}". Note that "POST /recipes" MUST be called first.
 // Otherwise, this route calls a bad request error since the recipe summary
@@ -528,7 +607,7 @@ func (wa *Webapp) GetRecipeWineSuggestions(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	summary, err := wa.cache.Get(fmt.Sprintf("recipes:summarized:%s", u), func() (string, error) {
+	summary, err := wa.cache.GetOrFetch(fmt.Sprintf("recipes:summarized:%s", u), func() (string, error) {
 		return "", fmt.Errorf("expected a summary to be generated before this call")
 	})
 	if err != nil {
@@ -536,7 +615,7 @@ func (wa *Webapp) GetRecipeWineSuggestions(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	suggestions, err := wa.cache.Get(fmt.Sprintf("recipes:suggestions-json:%s", u), func() (string, error) {
+	suggestions, err := wa.cache.GetOrFetch(fmt.Sprintf("recipes:suggestions-json:%s", u), func() (string, error) {
 		// Only decrement quota if the user has a cache miss
 		accountID := r.Context().Value(sessionContextName)
 		if a, ok := accountID.(string); ok {
