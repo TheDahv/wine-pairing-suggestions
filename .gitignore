@@ -5,3 +5,4 @@ webapp-binpackaged-template.yaml
 packaged-template.yaml
 bootstrap
 .DS_Store
+*.swp

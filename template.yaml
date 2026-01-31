@@ -10,7 +10,6 @@ Globals:
     Environment:
       Variables:
         DYNAMODB_ENDPOINT: !Ref DynamoDBEndpoint
-        VALKEY_ENDPOINT: !Ref ValkeyEndpoint
         GOOGLE_CLIENT_ID: !Ref GoogleClientID
         HOSTNAME: !Ref Hostname
 
@@ -20,22 +19,6 @@ Parameters:
     Description: (Deprecated - no longer needed) DynamoDB endpoint for local development
     Default: ""
 
-  ValkeyEndpoint:
-    Type: String
-    Description: Serverless Valkey cache endpoint
-    
-  VpcId:
-    Type: String
-    Description: Existing VPC ID
-    
-  SecurityGroupId:
-    Type: String
-    Description: Existing security group ID
-    
-  SubnetIds:
-    Type: CommaDelimitedList
-    Description: Existing subnet IDs for Lambda deployment
-    
   GoogleClientID:
     Type: String
     Description: Google OAuth Client ID
@@ -135,15 +118,8 @@ Resources:
         Variables:
           ANTHROPIC_API_KEY: !Ref AnthropicApiKey
           DYNAMODB_ENDPOINT: !Ref DynamoDBEndpoint
-          VALKEY_ENDPOINT: !Ref ValkeyEndpoint
           GOOGLE_CLIENT_ID: !Ref GoogleClientID
           HOSTNAME: !Ref Hostname
-      VpcConfig:
-        SecurityGroupIds:
-          - !Ref SecurityGroupId
-        SubnetIds:
-          - subnet-0d7bec672ecc67b69
-          - subnet-0fc5205a59aa350ab
       Policies:
         - CloudWatchLogsFullAccess
         - DynamoDBCrudPolicy:
@@ -154,7 +130,7 @@ Resources:
             - Effect: Allow
               Action:
                 - dynamodb:Query
-              Resource: !Sub "${RecipePairingsTable.Arn}/index/*"
+              Resource: !Sub "arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${RecipePairingsTable}/index/*"
 
   CustomDomain:
     Type: AWS::ApiGatewayV2::DomainName

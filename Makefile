@@ -68,27 +68,18 @@ deploy: package
 		echo "Stack exists, retrieving current parameters..."; \
 		EXISTING_GOOGLE_CLIENT_ID=$$(aws cloudformation describe-stacks --stack-name "$(STACK_NAME)" --region "$(AWS_REGION)" --query 'Stacks[0].Parameters[?ParameterKey==`GoogleClientID`].ParameterValue' --output text 2>/dev/null || echo ""); \
 		EXISTING_HOSTNAME=$$(aws cloudformation describe-stacks --stack-name "$(STACK_NAME)" --region "$(AWS_REGION)" --query 'Stacks[0].Parameters[?ParameterKey==`Hostname`].ParameterValue' --output text 2>/dev/null || echo ""); \
-		EXISTING_VALKEY_ENDPOINT=$$(aws cloudformation describe-stacks --stack-name "$(STACK_NAME)" --region "$(AWS_REGION)" --query 'Stacks[0].Parameters[?ParameterKey==`ValkeyEndpoint`].ParameterValue' --output text 2>/dev/null || echo ""); \
-		EXISTING_VPC_ID=$$(aws cloudformation describe-stacks --stack-name "$(STACK_NAME)" --region "$(AWS_REGION)" --query 'Stacks[0].Parameters[?ParameterKey==`VpcId`].ParameterValue' --output text 2>/dev/null || echo ""); \
-		EXISTING_SECURITY_GROUP_ID=$$(aws cloudformation describe-stacks --stack-name "$(STACK_NAME)" --region "$(AWS_REGION)" --query 'Stacks[0].Parameters[?ParameterKey==`SecurityGroupId`].ParameterValue' --output text 2>/dev/null || echo ""); \
-		EXISTING_SUBNET_IDS=$$(aws cloudformation describe-stacks --stack-name "$(STACK_NAME)" --region "$(AWS_REGION)" --query 'Stacks[0].Parameters[?ParameterKey==`SubnetIds`].ParameterValue' --output text 2>/dev/null || echo ""); \
+		EXISTING_CERTIFICATE_ARN=$$(aws cloudformation describe-stacks --stack-name "$(STACK_NAME)" --region "$(AWS_REGION)" --query 'Stacks[0].Parameters[?ParameterKey==`CertificateArn`].ParameterValue' --output text 2>/dev/null || echo ""); \
 	fi; \
 	\
 	FINAL_GOOGLE_CLIENT_ID=$${GOOGLE_CLIENT_ID_OVERRIDE:-$${GOOGLE_CLIENT_ID:-$$EXISTING_GOOGLE_CLIENT_ID}}; \
 	FINAL_HOSTNAME=$${HOSTNAME_OVERRIDE:-$${HOSTNAME:-$$EXISTING_HOSTNAME}}; \
-	FINAL_VALKEY_ENDPOINT=$${VALKEY_ENDPOINT_OVERRIDE:-$${VALKEY_ENDPOINT:-$$EXISTING_VALKEY_ENDPOINT}}; \
-	FINAL_VPC_ID=$${VPC_ID_OVERRIDE:-$${VPC_ID:-$$EXISTING_VPC_ID}}; \
-	FINAL_SECURITY_GROUP_ID=$${SECURITY_GROUP_ID_OVERRIDE:-$${SECURITY_GROUP_ID:-$$EXISTING_SECURITY_GROUP_ID}}; \
-	FINAL_SUBNET_IDS=$${SUBNET_IDS_OVERRIDE:-$${SUBNET_IDS:-$$EXISTING_SUBNET_IDS}}; \
+	FINAL_CERTIFICATE_ARN=$${CERTIFICATE_ARN_OVERRIDE:-$${CERTIFICATE_ARN:-$$EXISTING_CERTIFICATE_ARN}}; \
 	\
-	if [ -z "$$FINAL_GOOGLE_CLIENT_ID" ] || [ -z "$$FINAL_HOSTNAME" ] || [ -z "$$FINAL_VALKEY_ENDPOINT" ] || [ -z "$$FINAL_VPC_ID" ] || [ -z "$$FINAL_SECURITY_GROUP_ID" ] || [ -z "$$FINAL_SUBNET_IDS" ]; then \
+	if [ -z "$$FINAL_GOOGLE_CLIENT_ID" ] || [ -z "$$FINAL_HOSTNAME" ] || [ -z "$$FINAL_CERTIFICATE_ARN" ]; then \
 		echo "❌ Missing required parameters. Please set in .env file or as environment variables:"; \
 		echo "  - GOOGLE_CLIENT_ID"; \
 		echo "  - HOSTNAME"; \
-		echo "  - VALKEY_ENDPOINT"; \
-		echo "  - VPC_ID"; \
-		echo "  - SECURITY_GROUP_ID"; \
-		echo "  - SUBNET_IDS"; \
+		echo "  - CERTIFICATE_ARN"; \
 		exit 1; \
 	fi; \
 	\
@@ -107,10 +98,7 @@ deploy: package
 			AnthropicApiKey="$$ANTHROPIC_API_KEY" \
 			GoogleClientID="$$FINAL_GOOGLE_CLIENT_ID" \
 			Hostname="$$FINAL_HOSTNAME" \
-			ValkeyEndpoint="$$FINAL_VALKEY_ENDPOINT" \
-			VpcId="$$FINAL_VPC_ID" \
-			SecurityGroupId="$$FINAL_SECURITY_GROUP_ID" \
-			SubnetIds="$$FINAL_SUBNET_IDS"
+			CertificateArn="$$FINAL_CERTIFICATE_ARN"
 	\
 	$(MAKE) deploy-info
 
@@ -269,7 +257,3 @@ example-env:
 	@echo "S3_BUCKET=your-sam-deployment-bucket"
 	@echo "GOOGLE_CLIENT_ID=your-google-client-id"
 	@echo "HOSTNAME=your-custom-domain.com"
-	@echo "VALKEY_ENDPOINT=your-valkey-endpoint:6379"
-	@echo "VPC_ID=vpc-xxxxxxxx"
-	@echo "SECURITY_GROUP_ID=sg-xxxxxxxx"
-	@echo "SUBNET_IDS=subnet-xxx,subnet-yyy,subnet-zzz"
