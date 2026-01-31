@@ -8,6 +8,7 @@ import (
 	"strconv"
 
 	"github.com/thedahv/wine-pairing-suggestions/cache"
+	"github.com/thedahv/wine-pairing-suggestions/data"
 	"github.com/thedahv/wine-pairing-suggestions/mcp"
 	"github.com/thedahv/wine-pairing-suggestions/models"
 	"github.com/thedahv/wine-pairing-suggestions/webapp"
@@ -42,8 +43,14 @@ func main() {
 	fmt.Println("Connected")
 	s := mcp.MakeServer(c)
 
+	dl, err := data.Create(ctx)
+	if err != nil {
+		log.Fatalf("unable to connect to database")
+	}
+
 	wa, err := webapp.NewWebapp(serverPort,
 		webapp.WithCache(c),
+		webapp.WithDatabase(dl),
 		webapp.WithGoogleClientID(os.Getenv("GOOGLE_CLIENT_ID")),
 		webapp.WithHostname(os.Getenv("HOSTNAME")),
 		webapp.WithModel(model, s),

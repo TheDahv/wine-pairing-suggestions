@@ -9,11 +9,17 @@ Globals:
     Runtime: provided.al2023
     Environment:
       Variables:
+        DYNAMODB_ENDPOINT: !Ref DynamoDBEndpoint
         VALKEY_ENDPOINT: !Ref ValkeyEndpoint
         GOOGLE_CLIENT_ID: !Ref GoogleClientID
         HOSTNAME: !Ref Hostname
 
 Parameters:
+  DynamoDBEndpoint:
+    Type: String
+    Description: (Deprecated - no longer needed) DynamoDB endpoint for local development
+    Default: ""
+
   ValkeyEndpoint:
     Type: String
     Description: Serverless Valkey cache endpoint
@@ -49,6 +55,62 @@ Parameters:
     Description: ARN of the ACM certificate for the custom domain
 
 Resources:
+  # DynamoDB Tables
+  AccountsTable:
+    Type: AWS::DynamoDB::Table
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      TableName: Accounts
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: ID
+          AttributeType: S
+      KeySchema:
+        - AttributeName: ID
+          KeyType: HASH
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
+      Tags:
+        - Key: Project
+          Value: wine-pairing-suggestions
+        - Key: ManagedBy
+          Value: CloudFormation
+
+  RecipePairingsTable:
+    Type: AWS::DynamoDB::Table
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      TableName: RecipePairings
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: ID
+          AttributeType: S
+        - AttributeName: Type
+          AttributeType: S
+        - AttributeName: DateCreated
+          AttributeType: S
+      KeySchema:
+        - AttributeName: ID
+          KeyType: HASH
+      GlobalSecondaryIndexes:
+        - IndexName: Type-DateCreated-index
+          KeySchema:
+            - AttributeName: Type
+              KeyType: HASH
+            - AttributeName: DateCreated
+              KeyType: RANGE
+          Projection:
+            ProjectionType: KEYS_ONLY
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
+      Tags:
+        - Key: Project
+          Value: wine-pairing-suggestions
+        - Key: ManagedBy
+          Value: CloudFormation
+
   # Lambda Function
   WinePairingFunction:
     Type: AWS::Serverless::Function
@@ -72,6 +134,7 @@ Resources:
       Environment:
         Variables:
           ANTHROPIC_API_KEY: !Ref AnthropicApiKey
+          DYNAMODB_ENDPOINT: !Ref DynamoDBEndpoint
           VALKEY_ENDPOINT: !Ref ValkeyEndpoint
           GOOGLE_CLIENT_ID: !Ref GoogleClientID
           HOSTNAME: !Ref Hostname
@@ -83,6 +146,15 @@ Resources:
           - subnet-0fc5205a59aa350ab
       Policies:
         - CloudWatchLogsFullAccess
+        - DynamoDBCrudPolicy:
+            TableName: !Ref AccountsTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref RecipePairingsTable
+        - Statement:
+            - Effect: Allow
+              Action:
+                - dynamodb:Query
+              Resource: !Sub "${RecipePairingsTable.Arn}/index/*"
 
   CustomDomain:
     Type: AWS::ApiGatewayV2::DomainName
@@ -104,7 +176,7 @@ Outputs:
   WinePairingAPI:
     Description: API Gateway endpoint URL
     Value: !Sub "https://${ServerlessHttpApi}.execute-api.${AWS::Region}.amazonaws.com"
-  
+
   CustomDomainEndpoint:
     Description: "Custom domain endpoint URL"
     Value: !GetAtt CustomDomain.RegionalDomainName
@@ -112,3 +184,15 @@ Outputs:
   LambdaFunction:
     Description: Lambda Function ARN
     Value: !GetAtt WinePairingFunction.Arn
+
+  AccountsTableName:
+    Description: Accounts DynamoDB Table Name
+    Value: !Ref AccountsTable
+    Export:
+      Name: !Sub "${AWS::StackName}-AccountsTable"
+
+  RecipePairingsTableName:
+    Description: Recipe Pairings DynamoDB Table Name
+    Value: !Ref RecipePairingsTable
+    Export:
+      Name: !Sub "${AWS::StackName}-RecipePairingsTable"

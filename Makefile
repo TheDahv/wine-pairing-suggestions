@@ -1,4 +1,4 @@
-.PHONY: build clean deploy package test load-env check-bucket deploy-info redis-up redis-down test-local-full
+.PHONY: build clean deploy package test load-env check-bucket deploy-info redis-up redis-down test-local-full setup-local-db clean-local-db setup-local
 
 # Configuration
 STACK_NAME := wine-pairing-suggestions-lambda
@@ -158,7 +158,7 @@ redis-down:
 	@echo "✅ Redis stopped"
 
 # Test locally with SAM (using in-memory cache)
-test-local: sam-build
+test-local: build
 	@if [ -f .env ]; then export $$(grep -v '^#' .env | grep -v '^$$' | xargs); fi; \
 	echo "🚀 Starting SAM local API (connects to localhost:6379)..."; \
 	VALKEY_ENDPOINT=localhost:6379 sam local start-api
@@ -169,7 +169,11 @@ test-local-docker: build sam-build
 	echo "🚀 Starting SAM local API connected to Docker network..."; \
 	HOSTNAME=http://localhost:3000 \
 		VALKEY_ENDPOINT=cache:6379 \
-		sam local start-api --docker-network wine-pairing-suggestions_wine-net -t template.yaml
+		DYNAMODB_ENDPOINT=http://dynamodb-local:8000 \
+		sam local start-api \
+			--docker-network wine-pairing-suggestions_wine-net \
+			-t template.yaml \
+			--host 0.0.0.0
 
 # Full local development setup (Redis + SAM)
 test-local-full: redis-up
@@ -199,6 +203,65 @@ run-docker:
 run-docker-bg:
 	@echo "🚀 Starting full Docker Compose stack in background..."
 	docker-compose up -d
+
+# Setup local DynamoDB tables (matches CloudFormation definitions in template.yaml)
+setup-local-db:
+	@echo "🗄️  Setting up local DynamoDB tables..."
+	@ENDPOINT="http://localhost:8000"; \
+	REGION="us-west-2"; \
+	\
+	echo "⏳ Waiting for DynamoDB Local..."; \
+	until aws dynamodb list-tables --endpoint-url $$ENDPOINT --region $$REGION >/dev/null 2>&1; do \
+		echo "   DynamoDB Local not ready, retrying in 2s..."; \
+		sleep 2; \
+	done; \
+	echo "✅ DynamoDB Local is ready"; \
+	\
+	echo "   Creating Accounts table..."; \
+	aws dynamodb describe-table --table-name Accounts --endpoint-url $$ENDPOINT --region $$REGION >/dev/null 2>&1 || \
+	aws dynamodb create-table \
+		--table-name Accounts \
+		--billing-mode PAY_PER_REQUEST \
+		--attribute-definitions AttributeName=ID,AttributeType=S \
+		--key-schema AttributeName=ID,KeyType=HASH \
+		--endpoint-url $$ENDPOINT --region $$REGION >/dev/null; \
+	echo "   ✅ Accounts table ready"; \
+	\
+	echo "   Creating RecipePairings table..."; \
+	aws dynamodb describe-table --table-name RecipePairings --endpoint-url $$ENDPOINT --region $$REGION >/dev/null 2>&1 || \
+	aws dynamodb create-table \
+		--table-name RecipePairings \
+		--billing-mode PAY_PER_REQUEST \
+		--attribute-definitions \
+			AttributeName=ID,AttributeType=S \
+			AttributeName=Type,AttributeType=S \
+			AttributeName=DateCreated,AttributeType=S \
+		--key-schema AttributeName=ID,KeyType=HASH \
+		--global-secondary-indexes \
+			'IndexName=Type-DateCreated-index,KeySchema=[{AttributeName=Type,KeyType=HASH},{AttributeName=DateCreated,KeyType=RANGE}],Projection={ProjectionType=KEYS_ONLY}' \
+		--endpoint-url $$ENDPOINT --region $$REGION >/dev/null; \
+	echo "   ✅ RecipePairings table ready"; \
+	\
+	echo "🎉 Local DynamoDB setup complete!"; \
+	aws dynamodb list-tables --endpoint-url $$ENDPOINT --region $$REGION --output table
+
+# Clean local DynamoDB data
+clean-local-db:
+	@echo "🧹 Cleaning local DynamoDB data..."
+	docker-compose down -v
+	@echo "✅ Local DynamoDB data cleared"
+
+# Full local setup with fresh database
+setup-local: clean-local-db
+	@echo "🚀 Starting fresh local environment..."
+	docker-compose up -d
+	@echo "⏳ Waiting for services to be ready..."
+	sleep 5
+	$(MAKE) setup-local-db
+	@echo "✅ Local environment ready!"
+	@echo "   DynamoDB Local: http://localhost:8000"
+	@echo "   DynamoDB Admin: http://localhost:8001"
+	@echo "   Redis: localhost:6379"
 
 # Environment variable examples
 example-env:

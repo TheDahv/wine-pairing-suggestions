@@ -16,6 +16,7 @@ import (
 	"github.com/aws/aws-lambda-go/events"
 
 	"github.com/thedahv/wine-pairing-suggestions/cache"
+	"github.com/thedahv/wine-pairing-suggestions/data"
 	helpers "github.com/thedahv/wine-pairing-suggestions/lambdahelpers"
 	"github.com/thedahv/wine-pairing-suggestions/mcp"
 	"github.com/thedahv/wine-pairing-suggestions/models"
@@ -69,6 +70,16 @@ func NewHandler() (*Handler, error) {
 	}
 
 	options = append(options, webapp.WithModel(model, mcp.MakeServer(c)))
+
+	db, err := data.Create(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("unable to connect to database")
+	}
+	fmt.Println("connected to database. validating tables exist")
+	if err := db.ValidateTables(ctx); err != nil {
+		return nil, fmt.Errorf("table validation error: %v", err)
+	}
+	options = append(options, webapp.WithDatabase(db))
 
 	// Create webapp with serverless-friendly options
 	wa, err := webapp.NewWebapp(0, options...) // Port not used in Lambda
