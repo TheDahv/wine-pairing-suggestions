@@ -4,3 +4,4 @@ webapp-binpackaged-template.yaml
 .aws-sam
 packaged-template.yaml
 bootstrap
+.DS_Store
