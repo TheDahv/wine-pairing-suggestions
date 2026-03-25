@@ -42,7 +42,7 @@ func MakeBedrockModel(ctx context.Context) (llms.Model, error) {
 	llm, err := bedrock.New(
 		bedrock.WithClient(client),
 		// Note, this version of the Bedrock SDK doesn't have this supported model name yet
-		bedrock.WithModel("anthropic.claude-3-5-haiku-20241022-v1:0"))
+		bedrock.WithModel("anthropic.claude-haiku-4-5-20251001-v1:0"))
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize Bedrock LLM: %w", err)
 	}
@@ -50,7 +50,7 @@ func MakeBedrockModel(ctx context.Context) (llms.Model, error) {
 	return llm, nil
 }
 
-const claudeModelId = "claude-3-5-haiku-latest"
+const claudeModelId = "claude-haiku-4-5-20251001"
 
 // MakeClaude connects to claude assuming the ANTHROPIC_API_KEY environment variable
 // is set with a valid token.
