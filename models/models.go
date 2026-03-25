@@ -142,6 +142,7 @@ func SummarizeRecipe(ctx context.Context, model llms.Model, markdown string) (st
 
 // ParseSummary parses LLM output into Go types using JSON type annotations
 // from Summary.
+// TODO: Use https://pkg.go.dev/github.com/tmc/langchaingo@v0.1.14/outputparser#Structured
 func ParseSummary(output string) (Summary, error) {
 	var s Summary
 	if err := json.Unmarshal([]byte(output), &s); err != nil {
@@ -236,7 +237,7 @@ func GeneratePairingSuggestionsV2(ctx context.Context, model llms.Model, tools [
 
 	Don't explain your answer after you create the JSON. Let the JSON be the final answer.
 
-	Always return this JSON format:
+	Prefix the JSON output with "Final Answer: ". Always return this JSON format:
 	{
 		"suggestions": [
 			{
@@ -265,9 +266,13 @@ func GeneratePairingSuggestionsV2(ctx context.Context, model llms.Model, tools [
 		return "", fmt.Errorf("agent run error: %v", err)
 	}
 
+	result = strings.ReplaceAll(result, "```json", "")
+	result = strings.ReplaceAll(result, "```", "")
 	var sb strings.Builder
 	for l := range strings.Lines(result) {
-		if strings.HasPrefix(result, "Thought: ") || strings.HasPrefix(result, "Action :") || strings.HasPrefix(result, "Action Input:") {
+		if strings.HasPrefix(result, "Thought:") ||
+			strings.HasPrefix(result, "Action:") ||
+			strings.HasPrefix(result, "Action Input:") {
 			continue
 		}
 
